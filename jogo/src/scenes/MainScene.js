@@ -1,25 +1,41 @@
+// src/scenes/MainScene.js
 export default class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
-    this.fireRate = 120;     // ms entre tiros
+
+    // Player & tiros
+    this.fireRate = 120;
     this.bulletSpeed = 650;
     this.lastShot = 0;
     this.bulletLifespan = 2000;
+
+    // Inimigos
+    this.enemySpawnRate = 800;   // ms entre spawns
+    this.enemySpeedMin = 40;     // ↓ mais lento
+    this.enemySpeedMax = 80;     // ↓ mais lento
+    this.score = 0;
   }
 
   preload() {
-    // Nave (triângulo apontando para cima)
+    // Nave
     let g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0x4ade80, 1);
     g.fillTriangle(0, 24, 12, 0, 24, 24);
     g.generateTexture('ship', 24, 24);
     g.destroy();
 
-    // Bala (retângulo fino)
+    // Bala
     g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0x20d11d, 1);
     g.fillRect(0, 0, 3, 10);
     g.generateTexture('bullet', 3, 10);
+    g.destroy();
+
+    // Inimigo
+    g = this.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0xff4d6d, 1);
+    g.fillCircle(12, 12, 12);
+    g.generateTexture('enemy', 24, 24);
     g.destroy();
   }
 
@@ -30,34 +46,50 @@ export default class MainScene extends Phaser.Scene {
       .setDrag(800)
       .setMaxVelocity(400);
 
-    // Teclas
+    // Controles
     this.keys = this.input.keyboard.addKeys({ up:'W', left:'A', down:'S', right:'D' });
     this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    // Grupo de balas (pool)
+    // Grupos
     this.bullets = this.physics.add.group({
       classType: Phaser.Physics.Arcade.Image,
-      maxSize: 80,
-      runChildUpdate: false,
+      maxSize: 120, // um pouco maior pra evitar saturar cedo
     });
 
+    this.enemies = this.physics.add.group({
+      classType: Phaser.Physics.Arcade.Image,
+      maxSize: 5,
+    });
+
+    // HUD
     this.add.text(10, 10, 'WASD para mover • SPACE para atirar', {
       color: 'red', fontFamily: 'monospace'
     });
+    this.scoreText = this.add.text(10, 28, 'score: 0', {
+      color: '#fff', fontFamily: 'monospace'
+    });
 
+    // Bounds + descarte só de BALAS por borda
     this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
-
-    // Mata qualquer bala que bater na borda
     this.physics.world.on('worldbounds', (body) => {
       const obj = body?.gameObject;
-      if (obj && obj.active && obj.texture?.key === 'bullet') {
-        obj.disableBody(true, true);
-      }
+      if (!obj || !obj.active) return;
+      if (obj.texture?.key === 'bullet') obj.disableBody(true, true);
+    });
+
+    // Overlap bala × inimigo
+    this.physics.add.overlap(this.bullets, this.enemies, this.onBulletHitEnemy, null, this);
+
+    // Spawner
+    this.time.addEvent({
+      delay: this.enemySpawnRate,
+      loop: true,
+      callback: () => this.spawnEnemy(),
     });
   }
 
   update(time) {
-    // Movimento
+    // Movimento do player
     const speed = 260;
     let dx = 0, dy = 0;
     if (this.keys.left.isDown)  dx -= 1;
@@ -68,27 +100,17 @@ export default class MainScene extends Phaser.Scene {
     const len = Math.hypot(dx, dy) || 1;
     this.player.setVelocity((dx/len)*speed, (dy/len)*speed);
 
-    // Gira a nave na direção do movimento (se houver)
     if (dx || dy) {
-      // + PI/2 porque a textura "ship" já aponta para cima por padrão
       this.player.rotation = Math.atan2(dy, dx) + Math.PI / 2;
     }
 
-    // Auto-fire
+    // Tiro automático
     if (this.keySpace.isDown && time > this.lastShot + this.fireRate) {
       this.fireBullet();
       this.lastShot = time;
     }
 
-    // Limpa balas fora da tela
-    this.bullets.children.iterate(b => {
-      if (!b) return;
-      if (b.active && (b.y < -20 || b.y > 620 || b.x < -20 || b.x > 820)) {
-        b.disableBody(true, true);
-      }
-    });
-
-    // Limpeza por lifespan (fallback)
+    // Lifespan das balas
     this.bullets.children.iterate((b) => {
       if (!b || !b.active) return;
       if (time - (b.getData('born') || 0) > this.bulletLifespan) {
@@ -96,17 +118,20 @@ export default class MainScene extends Phaser.Scene {
       }
     });
 
+    // Limpa inimigos que passaram do fundo (margem maior pra garantir)
+    this.enemies.children.iterate((e) => {
+      if (!e || !e.active) return;
+      if (e.y > this.scale.height + 40) e.disableBody(true, true);
+    });
   }
 
   fireBullet() {
-    // Vetor "forward" da nave baseado na rotação atual.
-    // A textura aponta para cima, então o forward é (rot - PI/2).
+    // Direção da ponta
     const rot = this.player.rotation;
     const fx = Math.cos(rot - Math.PI / 2);
     const fy = Math.sin(rot - Math.PI / 2);
 
-    // Posição do "nariz" da nave (um pouco à frente do centro)
-    const noseOffset = 16; // ajuste fino pra sair da ponta
+    const noseOffset = 16;
     const bx = this.player.x + fx * noseOffset;
     const by = this.player.y + fy * noseOffset;
 
@@ -121,23 +146,62 @@ export default class MainScene extends Phaser.Scene {
     bullet.body.enable = true;
     bullet.body.reset(bx, by);
 
-    // sem gravidade/arrasto
-    if (bullet.body.setAllowGravity) {
-      bullet.body.setAllowGravity(false);
-    } else {
-      bullet.body.allowGravity = false;
-    }
+    // Sem gravidade/arrasto
+    if (bullet.body.setAllowGravity) bullet.body.setAllowGravity(false);
+    else bullet.body.allowGravity = false;
     bullet.body.setDrag(0, 0);
 
-    // colidir com bordas e emitir evento
+    // Worldbounds só para bala
     bullet.setCollideWorldBounds(true);
     bullet.body.onWorldBounds = true;
 
-    // velocidade e rotação
+    // Velocidade e rotação
     bullet.setVelocity(fx * this.bulletSpeed, fy * this.bulletSpeed);
     bullet.setRotation(rot);
 
-    // lifespan
     bullet.setData('born', this.time.now);
+  }
+
+  spawnEnemy() {
+    // Nasce um pouco acima do topo
+    const x = Phaser.Math.Between(24, this.scale.width - 24);
+    const y = -20;
+
+    // Use get() para reusar do pool (ou criar até maxSize); pode retornar null se pool saturar
+    let enemy = this.enemies.get(x, y, 'enemy');
+    if (!enemy) return; // pool cheio -> evita erro
+
+    // Garante corpo Arcade
+    if (!enemy.body) this.physics.world.enable(enemy);
+
+    // Reset/reativação
+    enemy
+      .setActive(true)
+      .setVisible(true)
+      .setDepth(3);
+
+    enemy.body.enable = true;
+    enemy.body.reset(x, y);
+
+    // Sem gravidade
+    if (enemy.body.setAllowGravity) enemy.body.setAllowGravity(false);
+    else enemy.body.allowGravity = false;
+
+    // Velocidade descendente mais lenta
+    const vy = Phaser.Math.Between(this.enemySpeedMin, this.enemySpeedMax);
+    enemy.setVelocity(0, vy);
+
+    // NÃO usar collideWorldBounds pra eles não morrerem no topo
+    // Limpeza ocorre no update() quando saem do fundo
+  }
+
+  onBulletHitEnemy(bullet, enemy) {
+    bullet.disableBody(true, true);
+    enemy.disableBody(true, true);
+
+    this.score += 10;
+    this.scoreText.setText(`score: ${this.score}`);
+
+    this.cameras.main.flash(80, 255, 255, 255);
   }
 }
