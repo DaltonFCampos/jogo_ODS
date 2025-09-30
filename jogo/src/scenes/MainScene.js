@@ -45,6 +45,8 @@ export default class MainScene extends Phaser.Scene {
       .setCollideWorldBounds(true)
       .setDrag(800)
       .setMaxVelocity(400);
+    
+    this.player.hp = 5;
 
     // Controles
     this.keys = this.input.keyboard.addKeys({ up:'W', left:'A', down:'S', right:'D' });
@@ -69,6 +71,11 @@ export default class MainScene extends Phaser.Scene {
       color: '#fff', fontFamily: 'monospace'
     });
 
+    this.hpText = this.add.text(10, 46, 'HP: 5', {
+      color: '#ff8888', fontFamily: 'monospace'
+    });
+
+
     // Bounds + descarte só de BALAS por borda
     this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
     this.physics.world.on('worldbounds', (body) => {
@@ -86,6 +93,9 @@ export default class MainScene extends Phaser.Scene {
       loop: true,
       callback: () => this.spawnEnemy(),
     });
+
+    this.physics.add.overlap(this.player, this.enemies, this.onEnemyHitPlayer, null, this);
+
   }
 
   update(time) {
@@ -182,6 +192,7 @@ export default class MainScene extends Phaser.Scene {
 
     enemy.body.enable = true;
     enemy.body.reset(x, y);
+    enemy.hp = 2;
 
     // Sem gravidade
     if (enemy.body.setAllowGravity) enemy.body.setAllowGravity(false);
@@ -197,11 +208,27 @@ export default class MainScene extends Phaser.Scene {
 
   onBulletHitEnemy(bullet, enemy) {
     bullet.disableBody(true, true);
+
+    enemy.hp -= 1;
+
+    if (enemy.hp <= 0) {
+      enemy.disableBody(true, true);
+      this.score += 10;
+      this.scoreText.setText(`score: ${this.score}`);
+      this.cameras.main.flash(80, 255, 255, 255);
+    }
+  }
+
+  onEnemyHitPlayer(player, enemy) {
     enemy.disableBody(true, true);
 
-    this.score += 10;
-    this.scoreText.setText(`score: ${this.score}`);
+    player.hp -= 1;
+    this.hpText.setText(`HP: ${player.hp}`);
 
-    this.cameras.main.flash(80, 255, 255, 255);
+    this.cameras.main.shake(150, 0.01);
+
+    if (player.hp <= 0) {
+      this.scene.restart();
+    }
   }
 }
