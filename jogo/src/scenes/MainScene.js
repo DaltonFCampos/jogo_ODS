@@ -38,6 +38,7 @@ export default class MainScene extends Phaser.Scene {
   create() {
     // Player
     this.player = this.physics.add.image(400, 500, 'ship')
+      .setScale(0.5)
       .setCollideWorldBounds(true)
       .setDrag(800)
       .setMaxVelocity(400);
@@ -133,7 +134,11 @@ export default class MainScene extends Phaser.Scene {
     this.player.setVelocity((dx/len)*speed, (dy/len)*speed);
 
     if (dx || dy) {
-      this.player.rotation = Math.atan2(dy, dx) + Math.PI / 2;
+      const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
+      const currentAngle = this.player.rotation;
+
+      // o terceiro argumento é a velocidade da interpolação
+      this.player.rotation = Phaser.Math.Angle.RotateTo(currentAngle, targetAngle, 0.25);
     }
 
     // Tiro automático
