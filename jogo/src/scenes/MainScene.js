@@ -17,13 +17,9 @@ export default class MainScene extends Phaser.Scene {
   }
 
   preload() {
+    let g = null
     // Nave
-    let g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x4ade80, 1);
-    g.fillTriangle(0, 24, 12, 0, 24, 24);
-    g.generateTexture('ship', 24, 24);
-    g.destroy();
-
+    this.load.image('ship', 'assets/ship.png');
     // Bala
     g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0x20d11d, 1);
