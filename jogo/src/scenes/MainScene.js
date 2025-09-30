@@ -44,9 +44,13 @@ export default class MainScene extends Phaser.Scene {
     
     this.player.hp = 5;
 
+
     // Controles
     this.keys = this.input.keyboard.addKeys({ up:'W', left:'A', down:'S', right:'D' });
     this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    // Tecla para pausar
+    this.keyPause = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
+    this.isPaused = false;
 
     // Grupos
     this.bullets = this.physics.add.group({
@@ -70,6 +74,12 @@ export default class MainScene extends Phaser.Scene {
     this.hpText = this.add.text(10, 46, 'HP: 5', {
       color: '#ff8888', fontFamily: 'monospace'
     });
+    // Texto "PAUSADO"
+    this.pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'PAUSADO', {
+      fontFamily: 'monospace',
+      fontSize: '32px',
+      color: '#ffff00'
+    }).setOrigin(0.5).setVisible(false);
 
 
     // Bounds + descarte só de BALAS por borda
@@ -84,7 +94,7 @@ export default class MainScene extends Phaser.Scene {
     this.physics.add.overlap(this.bullets, this.enemies, this.onBulletHitEnemy, null, this);
 
     // Spawner
-    this.time.addEvent({
+    this.enemySpawnEvent = this.time.addEvent({
       delay: this.enemySpawnRate,
       loop: true,
       callback: () => this.spawnEnemy(),
@@ -95,6 +105,22 @@ export default class MainScene extends Phaser.Scene {
   }
 
   update(time) {
+
+    if (Phaser.Input.Keyboard.JustDown(this.keyPause)) {
+      this.isPaused = !this.isPaused;
+      this.pauseText.setVisible(this.isPaused);
+
+      if (this.isPaused) {
+        this.physics.world.pause();
+        this.enemySpawnEvent.paused = true;
+      } else {
+        this.physics.world.resume();
+        this.enemySpawnEvent.paused = false;
+      }
+    }
+
+    if (this.isPaused) return;
+
     // Movimento do player
     const speed = 260;
     let dx = 0, dy = 0;
