@@ -11,8 +11,8 @@ export default class MainScene extends Phaser.Scene {
 
     // Inimigos
     this.enemySpawnRate = 800;   // ms entre spawns
-    this.enemySpeedMin = 40;     // ↓ mais lento
-    this.enemySpeedMax = 80;     // ↓ mais lento
+    this.enemySpeedMin = 20;     // ↓ mais lento
+    this.enemySpeedMax = 40;     // ↓ mais lento
     this.score = 0;
   }
 
@@ -200,18 +200,39 @@ export default class MainScene extends Phaser.Scene {
   }
 
   spawnEnemy() {
-    // Nasce um pouco acima do topo
-    const x = Phaser.Math.Between(24, this.scale.width - 24);
-    const y = -20;
+    const margin = 30;
+    const bounds = {
+      left: -margin,
+      right: this.scale.width + margin,
+      top: -margin,
+      bottom: this.scale.height + margin
+    };
 
-    // Use get() para reusar do pool (ou criar até maxSize); pode retornar null se pool saturar
+    // Escolhe aleatoriamente um dos lados
+    const sides = ['top', 'bottom', 'left', 'right'];
+    const side = Phaser.Utils.Array.GetRandom(sides);
+
+    let x, y;
+
+    if (side === 'top') {
+      x = Phaser.Math.Between(0, this.scale.width);
+      y = bounds.top;
+    } else if (side === 'bottom') {
+      x = Phaser.Math.Between(0, this.scale.width);
+      y = bounds.bottom;
+    } else if (side === 'left') {
+      x = bounds.left;
+      y = Phaser.Math.Between(0, this.scale.height);
+    } else if (side === 'right') {
+      x = bounds.right;
+      y = Phaser.Math.Between(0, this.scale.height);
+    }
+
     let enemy = this.enemies.get(x, y, 'enemy');
-    if (!enemy) return; // pool cheio -> evita erro
+    if (!enemy) return;
 
-    // Garante corpo Arcade
     if (!enemy.body) this.physics.world.enable(enemy);
 
-    // Reset/reativação
     enemy
       .setActive(true)
       .setVisible(true)
@@ -221,16 +242,16 @@ export default class MainScene extends Phaser.Scene {
     enemy.body.reset(x, y);
     enemy.hp = 2;
 
-    // Sem gravidade
     if (enemy.body.setAllowGravity) enemy.body.setAllowGravity(false);
     else enemy.body.allowGravity = false;
 
-    // Velocidade descendente mais lenta
-    const vy = Phaser.Math.Between(this.enemySpeedMin, this.enemySpeedMax);
-    enemy.setVelocity(0, vy);
+    // Define direção para o centro (ou para o jogador)
+    const target = new Phaser.Math.Vector2(this.player.x, this.player.y);
+    const from = new Phaser.Math.Vector2(x, y);
+    const direction = target.subtract(from).normalize();
 
-    // NÃO usar collideWorldBounds pra eles não morrerem no topo
-    // Limpeza ocorre no update() quando saem do fundo
+    const speed = Phaser.Math.Between(this.enemySpeedMin, this.enemySpeedMax);
+    enemy.setVelocity(direction.x * speed, direction.y * speed);
   }
 
   onBulletHitEnemy(bullet, enemy) {
