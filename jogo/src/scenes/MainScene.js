@@ -14,6 +14,12 @@ export default class MainScene extends Phaser.Scene {
     this.enemySpeedMin = 20;     // ↓ mais lento
     this.enemySpeedMax = 40;     // ↓ mais lento
     this.score = 0;
+
+    //Variáveis de poluição
+    this.pollutionLevel = 0;
+    this.maxPollution = 100;
+    this.pollutionRate = 2; // quanto cada poluição aumenta
+    this.pollutionDropRate = 4000; // ms (a cada 4s os inimigos soltam)
   }
 
   preload() {
@@ -36,6 +42,7 @@ export default class MainScene extends Phaser.Scene {
 
     this.load.image('water', 'assets/water-tile2-seamless.png');
     this.load.image('cannonball', 'assets/cannonBall.png');
+    this.load.image('pollution', 'assets/pollution.png');
   }
 
   create() {
@@ -70,6 +77,12 @@ export default class MainScene extends Phaser.Scene {
       maxSize: 5,
     });
 
+    this.pollutionGroup = this.physics.add.group({
+      classType: Phaser.Physics.Arcade.Image,
+      maxSize: 50,
+    });
+
+
     // HUD
     this.add.text(10, 10, 'WASD para mover • SPACE para atirar', {
       color: 'red', fontFamily: 'monospace'
@@ -79,8 +92,15 @@ export default class MainScene extends Phaser.Scene {
     });
 
     this.hpText = this.add.text(10, 46, 'HP: 5', {
-      color: '#ff8888', fontFamily: 'monospace'
+      color: '#f01313ff', fontFamily: 'monospace'
     });
+
+    this.pollutionLevel = 0;
+    this.maxPollution = 100;
+    this.pollutionText = this.add.text(10, 64, 'Poluição: 0%', {
+      color: '#082c0dff', fontFamily: 'monospace'
+    });
+
     // Texto "PAUSADO"
     this.pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'PAUSADO', {
       fontFamily: 'monospace',
@@ -99,6 +119,8 @@ export default class MainScene extends Phaser.Scene {
 
     // Overlap bala × inimigo
     this.physics.add.overlap(this.bullets, this.enemies, this.onBulletHitEnemy, null, this);
+    // Overlap jogador x poluição
+    this.physics.add.overlap(this.player, this.pollutionGroup, this.collectPollution, null, this);
 
     // Spawner
     this.enemySpawnEvent = this.time.addEvent({
@@ -263,12 +285,88 @@ export default class MainScene extends Phaser.Scene {
 
     const speed = Phaser.Math.Between(this.enemySpeedMin, this.enemySpeedMax);
     enemy.setVelocity(direction.x * speed, direction.y * speed);
+
+    // // Envia uma "gota de poluição" periodicamente enquanto estiver ativo
+    // enemy.pollutionTimer = this.time.addEvent({
+    //   delay: this.pollutionDropRate,
+    //   loop: true,
+    //   callback: () => {
+    //     if (enemy.active) this.addPollution(this.pollutionRate);
+    //   }
+    // });
+
+    enemy.pollutionTimer = this.time.addEvent({
+      delay: this.pollutionDropRate,
+      loop: true,
+      callback: () => {
+        if (enemy.active && this.isInScreen(enemy)) {
+          this.dropPollution(enemy.x, enemy.y);
+        }
+      }
+    });
+
+  }
+
+  isInScreen(sprite) {
+    return (
+      sprite.x >= 0 &&
+      sprite.x <= this.scale.width &&
+      sprite.y >= 0 &&
+      sprite.y <= this.scale.height
+    );
+  }
+
+  addPollution(amount) {
+    this.pollutionLevel += amount;
+    if (this.pollutionLevel > this.maxPollution) {
+      this.pollutionLevel = this.maxPollution;
+    }
+
+    this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
+
+    if (this.pollutionLevel >= this.maxPollution) {
+      this.gameOverByPollution();
+    }
+  }
+
+  gameOverByPollution() {
+    this.scene.restart();
+    // Você pode mostrar uma mensagem também se quiser
+    // this.add.text(...).setText("Oceano poluído! Fim de jogo.");
+  }
+
+  dropPollution(x, y) {
+    const p = this.pollutionGroup.get(x, y, 'pollution');
+    if (!p) return;
+
+    p.setActive(true).setVisible(true);
+    p.body.enable = true;
+    p.setDepth(2);
+    p.setScale(0.1);
+
+    // Posiciona e evita gravidade
+    p.body.reset(x, y);
+    if (p.body.setAllowGravity) p.body.setAllowGravity(false);
+
+    this.addPollution(5); // aumenta ao spawnar
+  }
+
+  collectPollution(player, pollution) {
+    pollution.disableBody(true, true);
+    this.pollutionLevel -= 10;
+    if (this.pollutionLevel < 0) this.pollutionLevel = 0;
+    this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
   }
 
   onBulletHitEnemy(bullet, enemy) {
     bullet.disableBody(true, true);
 
     enemy.hp -= 1;
+
+    if (enemy.pollutionTimer) {
+      enemy.pollutionTimer.remove();
+      enemy.pollutionTimer = null;
+    }
 
     if (enemy.hp <= 0) {
       enemy.disableBody(true, true);
@@ -285,6 +383,11 @@ export default class MainScene extends Phaser.Scene {
     this.hpText.setText(`HP: ${player.hp}`);
 
     this.cameras.main.shake(150, 0.01);
+
+    if (enemy.pollutionTimer) {
+      enemy.pollutionTimer.remove();
+      enemy.pollutionTimer = null;
+    }
 
     if (player.hp <= 0) {
       this.scene.restart();
