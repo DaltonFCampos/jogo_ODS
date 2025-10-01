@@ -4,7 +4,7 @@ export default class MainScene extends Phaser.Scene {
     super('MainScene');
 
     // Player & tiros
-    this.fireRate = 120;
+    this.fireRate = 600;
     this.bulletSpeed = 650;
     this.lastShot = 0;
     this.bulletLifespan = 2000;
@@ -33,6 +33,9 @@ export default class MainScene extends Phaser.Scene {
     g.fillCircle(12, 12, 12);
     g.generateTexture('enemy', 24, 24);
     g.destroy();
+
+    this.load.image('water', 'assets/water-tile2-seamless.png');
+    this.load.image('cannonball', 'assets/cannonBall.png');
   }
 
   create() {
@@ -45,6 +48,9 @@ export default class MainScene extends Phaser.Scene {
     
     this.player.hp = 5;
 
+    this.water = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
+    .setOrigin(0)
+    .setDepth(-1);
 
     // Controles
     this.keys = this.input.keyboard.addKeys({ up:'W', left:'A', down:'S', right:'D' });
@@ -88,7 +94,7 @@ export default class MainScene extends Phaser.Scene {
     this.physics.world.on('worldbounds', (body) => {
       const obj = body?.gameObject;
       if (!obj || !obj.active) return;
-      if (obj.texture?.key === 'bullet') obj.disableBody(true, true);
+      if (obj.texture?.key === 'cannonball') obj.disableBody(true, true);
     });
 
     // Overlap bala × inimigo
@@ -160,6 +166,9 @@ export default class MainScene extends Phaser.Scene {
       if (!e || !e.active) return;
       if (e.y > this.scale.height + 40) e.disableBody(true, true);
     });
+
+    this.water.tilePositionY += 0.2;
+    this.water.tilePositionX += 0.1;
   }
 
   fireBullet() {
@@ -172,13 +181,15 @@ export default class MainScene extends Phaser.Scene {
     const bx = this.player.x + fx * noseOffset;
     const by = this.player.y + fy * noseOffset;
 
-    const bullet = this.bullets.get(bx, by, 'bullet');
+    // const bullet = this.bullets.get(bx, by, 'bullet');
+    const bullet = this.bullets.get(bx, by, 'cannonball');
     if (!bullet) return;
 
     bullet
       .setActive(true)
       .setVisible(true)
-      .setDepth(5);
+      .setDepth(5)
+      .setScale(1);
 
     bullet.body.enable = true;
     bullet.body.reset(bx, by);
