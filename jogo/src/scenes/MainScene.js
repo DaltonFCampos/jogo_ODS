@@ -389,7 +389,9 @@ export default class MainScene extends Phaser.Scene {
 
   gameOverByPollution() {
     this.addCenteredMessage('Oceano poluído! Fim de jogo.');
-    this.time.delayedCall(1200, () => this.scene.restart());
+    this.time.delayedCall(1200, () => {
+      this.scene.start('GameOverScene', { score: this.score });
+    });
   }
 
   addCenteredMessage(msg) {
@@ -433,7 +435,9 @@ export default class MainScene extends Phaser.Scene {
 
     if (player.hp <= 0) {
       this.addCenteredMessage('Você foi derrotado!');
-      this.time.delayedCall(1000, () => this.scene.restart());
+      this.time.delayedCall(1000, () => {
+        this.scene.start('GameOverScene', { score: this.score });
+      });
     }
   }
 
@@ -445,12 +449,14 @@ export default class MainScene extends Phaser.Scene {
     }
 
     turtle.hp -= 1;
-    this.turtleHpText.setText(`Tartaruga HP: ${turtle.hp}`);
+    this.turtleHpText.setText(Tartaruga, `HP: ${turtle.hp}`);
     this.cameras.main.shake(150, 0.008);
 
     if (turtle.hp <= 0) {
       this.addCenteredMessage('A tartaruga foi ferida fatalmente! Proteja melhor da próxima vez.');
-      this.time.delayedCall(1200, () => this.scene.restart());
+      this.time.delayedCall(1200, () => {
+        this.scene.start('GameOverScene', { score: this.score });
+      });
     }
   }
 
@@ -477,6 +483,6 @@ export default class MainScene extends Phaser.Scene {
 
     // gira levemente para "apontar" o nado
     const angle = Math.atan2(dir.y, dir.x) + Math.PI / 2;
-    this.turtle.rotation = Phaser.Math.Angle.RotateTo(this.turtle.rotation, angle, 0.05);
-  }
+    this.turtle.rotation = Phaser.Math.Angle.RotateTo(this.turtle.rotation, angle, 0.05);
+  }
 }
