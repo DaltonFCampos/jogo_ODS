@@ -1,3 +1,4 @@
+// src/scenes/MainScene.js
 export default class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
@@ -9,19 +10,19 @@ export default class MainScene extends Phaser.Scene {
     this.bulletLifespan = 2000;
 
     // Inimigos
-    this.enemySpawnRate = 900;           // ↑ um pouco para reduzir pressão
+    this.enemySpawnRate = 900;
     this.enemySpeedMin = 20;
     this.enemySpeedMax = 40;
     this.score = 0;
-    this.enemyHeartDropChance = 0.25;    // 25% de chance de dropar vida
+    this.enemyHeartDropChance = 0.25; // 25%
 
     // Poluição (mais fluida)
     this.pollutionLevel = 0;
     this.maxPollution = 100;
-    this.pollutionDropRate = 5000;       // ↑ menos frequente
-    this.pollutionDropJitter = 1800;     // variação aleatória
-    this.pollutionPerDrop = 2;           // ↓ menos por gota
-    this.maxActivePollution = 30;        // cap para não lotar a tela
+    this.pollutionDropRate = 5000;      // base
+    this.pollutionDropJitter = 1800;    // variação
+    this.pollutionPerDrop = 2;          // por gota
+    this.maxActivePollution = 30;       // cap em tela
 
     // Tartaruga (aliada)
     this.turtle = null;
@@ -44,9 +45,9 @@ export default class MainScene extends Phaser.Scene {
 
     // Tartaruga
     g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14); // casco
-    g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);   // cabeça
-    g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);   // nadadeiras
+    g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14);
+    g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);
+    g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);
     g.fillCircle(7, 24, 4); g.fillCircle(25, 24, 4);
     g.generateTexture('turtle', 32, 32);
     g.destroy();
@@ -54,15 +55,9 @@ export default class MainScene extends Phaser.Scene {
     // Coração (vida)
     g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0xff2d55, 1);
-    // coração simples
     g.fillCircle(8, 8, 6);
     g.fillCircle(16, 8, 6);
-    g.beginPath();
-    g.moveTo(2, 10);
-    g.lineTo(12, 22);
-    g.lineTo(22, 10);
-    g.closePath();
-    g.fillPath();
+    g.beginPath(); g.moveTo(2, 10); g.lineTo(12, 22); g.lineTo(22, 10); g.closePath(); g.fillPath();
     g.generateTexture('heart', 24, 24);
     g.destroy();
 
@@ -74,8 +69,7 @@ export default class MainScene extends Phaser.Scene {
 
   create() {
     // Fundo (água)
-    this.water = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
+    this.water = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
       .setOrigin(0)
       .setDepth(-1);
 
@@ -96,9 +90,9 @@ export default class MainScene extends Phaser.Scene {
 
     // Grupos
     this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120 });
-    this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 8 }); // leve aumento de spawns possíveis
+    this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 8 });
     this.pollutionGroup = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: this.maxActivePollution });
-    this.pickups = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 6 }); // corações
+    this.pickups = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 6 });
 
     // Tartaruga aliada
     this.turtle = this.physics.add.image(400, 350, 'turtle')
@@ -201,7 +195,7 @@ export default class MainScene extends Phaser.Scene {
       if (e.y > this.scale.height + 40) e.disableBody(true, true);
     });
 
-    // Fundo mais suave
+    // Fundo suave
     this.water.tilePositionY += 0.15;
     this.water.tilePositionX += 0.07;
 
@@ -281,7 +275,7 @@ export default class MainScene extends Phaser.Scene {
     return sprite.x >= 0 && sprite.x <= this.scale.width && sprite.y >= 0 && sprite.y <= this.scale.height;
   }
 
-  // ----------- Poluição (mais fluida) -----------
+  // ----------- Poluição -----------
   dropPollution(x, y) {
     // cap de poluição ativa
     if (this.pollutionGroup.countActive(true) >= this.maxActivePollution) return;
@@ -292,19 +286,18 @@ export default class MainScene extends Phaser.Scene {
     p.setActive(true).setVisible(true);
     p.body.enable = true;
     p.setDepth(2);
-    p.setScale(0.08); // um pouco menor
+    p.setScale(0.08);
     p.setAlpha(0);
 
     p.body.reset(x, y);
     if (p.body.setAllowGravity) p.body.setAllowGravity(false);
 
-    // efeito de "surgir" suave e flutuar levemente
+    // efeito de “surgir” + flutuação suave
     this.tweens.add({
       targets: p,
       alpha: { from: 0, to: 1 },
       duration: 300,
       onComplete: () => {
-        // pequena animação de flutuação
         this.tweens.add({
           targets: p,
           y: { from: p.y, to: p.y + Phaser.Math.Between(-6, 6) },
@@ -316,19 +309,8 @@ export default class MainScene extends Phaser.Scene {
       }
     });
 
-    // aumenta poluição de forma mais leve
+    // aumenta poluição
     this.addPollution(this.pollutionPerDrop);
-
-    // Desaparece sozinho depois de um tempo, removendo “picos”
-    this.time.delayedCall(8000, () => {
-      if (!p.active) return;
-      this.tweens.add({
-        targets: p,
-        alpha: 0,
-        duration: 350,
-        onComplete: () => p.disableBody(true, true)
-      });
-    });
   }
 
   addPollution(amount) {
@@ -439,17 +421,6 @@ export default class MainScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
       ease: 'Sine.inOut'
-    });
-
-    // Desaparece sozinho depois de um tempo
-    this.time.delayedCall(8000, () => {
-      if (!heart.active) return;
-      this.tweens.add({
-        targets: heart,
-        alpha: 0,
-        duration: 300,
-        onComplete: () => heart.disableBody(true, true)
-      });
     });
   }
 
