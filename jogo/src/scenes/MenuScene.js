@@ -14,16 +14,6 @@ export default class MenuScene extends Phaser.Scene {
       .setOrigin(0)
       .setDisplaySize(this.scale.width, this.scale.height);
 
-    // Título
-    this.title = this.add
-      .text(this.scale.width / 2, this.scale.height * 0.25, 'EcoNavio', {
-        fontFamily: 'monospace',
-        fontSize: '56px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5)
-      .setShadow(2, 2, '#000', 4, true, true);
-
     // Botão iniciar
     this.btn = this.add
       .text(this.scale.width / 2, this.scale.height - 100, '[ INICIAR JOGO ]', {
