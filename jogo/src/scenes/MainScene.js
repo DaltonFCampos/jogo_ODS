@@ -23,6 +23,7 @@ export default class MainScene extends Phaser.Scene {
     this.pollutionDropJitter = 1800;    // variação
     this.pollutionPerDrop = 2;          // por gota
     this.maxActivePollution = 30;       // cap em tela
+    this.pollutionCollectAmount = 2;   // <-- contador para diminuir poluição
 
     // Tartaruga (aliada)
     this.turtle = null;
@@ -277,7 +278,6 @@ export default class MainScene extends Phaser.Scene {
 
   // ----------- Poluição -----------
   dropPollution(x, y) {
-    // cap de poluição ativa
     if (this.pollutionGroup.countActive(true) >= this.maxActivePollution) return;
 
     const p = this.pollutionGroup.get(x, y, 'pollution');
@@ -309,7 +309,6 @@ export default class MainScene extends Phaser.Scene {
       }
     });
 
-    // aumenta poluição
     this.addPollution(this.pollutionPerDrop);
   }
 
@@ -322,14 +321,14 @@ export default class MainScene extends Phaser.Scene {
   collectPollution(_player, pollution) {
     if (!pollution.active) return;
     pollution.disableBody(true, true);
-    this.pollutionLevel = Math.max(0, this.pollutionLevel - 10);
+    this.pollutionLevel = Math.max(0, this.pollutionLevel - this.pollutionCollectAmount); // <-- usa a constante
     this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
   }
 
   onTurtleCollectPollution(_turtle, pollution) {
     if (!pollution.active) return;
     pollution.disableBody(true, true);
-    this.pollutionLevel = Math.max(0, this.pollutionLevel - 12);
+    this.pollutionLevel = Math.max(0, this.pollutionLevel - this.pollutionCollectAmount); // <-- usa a mesma constante
     this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
     this.score += 2;
     this.scoreText.setText(`score: ${this.score}`);
