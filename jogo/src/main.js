@@ -2,15 +2,12 @@ import MenuScene from './scenes/MenuScene.js';
 import MainScene from './scenes/MainScene.js';
 import GameOverScene from './scenes/GameOverScene.js';
 
-const config = {
+new Phaser.Game({
   type: Phaser.AUTO,
   width: 800,
   height: 600,
+  backgroundColor: '#0b1020',
+  parent: 'game-container',
+  physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
   scene: [MenuScene, MainScene, GameOverScene],
-  physics: {
-    default: 'arcade',
-    arcade: { debug: false }
-  }
-};
-
-const game = new Phaser.Game(config);
+});

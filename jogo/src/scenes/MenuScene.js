@@ -5,26 +5,69 @@ export default class MenuScene extends Phaser.Scene {
 
   preload() {
     this.load.image('menuBg', 'assets/menu-background.png');
-
   }
 
   create() {
     // Fundo
-    this.add.image(0, 0, 'menuBg').setOrigin(0).setDisplaySize(this.scale.width, this.scale.height);
+    this.bg = this.add
+      .image(0, 0, 'menuBg')
+      .setOrigin(0)
+      .setDisplaySize(this.scale.width, this.scale.height);
 
-    // Botão para iniciar
-    const btn = this.add.text(this.scale.width / 2, this.scale.height - 100, '[ INICIAR JOGO ]', {
-      fontFamily: 'monospace',
-      fontSize: '24px',
-      color: '#00ffcc',
-      backgroundColor: '#00000080',
-      padding: { x: 12, y: 6 }
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    // Título
+    this.title = this.add
+      .text(this.scale.width / 2, this.scale.height * 0.25, 'EcoNavio', {
+        fontFamily: 'monospace',
+        fontSize: '56px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5)
+      .setShadow(2, 2, '#000', 4, true, true);
 
-    btn.on('pointerover', () => btn.setStyle({ fill: '#ffff00' }));
-    btn.on('pointerout', () => btn.setStyle({ fill: '#00ffcc' }));
-    btn.on('pointerdown', () => {
-      this.scene.start('MainScene');
+    // Botão iniciar
+    this.btn = this.add
+      .text(this.scale.width / 2, this.scale.height - 100, '[ INICIAR JOGO ]', {
+        fontFamily: 'monospace',
+        fontSize: '24px',
+        color: '#00ffcc',
+        backgroundColor: '#000000',
+        padding: { x: 12, y: 8 },
+      })
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+
+    // Efeito pulse
+    this.tweens.add({
+      targets: this.btn,
+      scale: { from: 1, to: 1.06 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
     });
+
+    // Hover
+    this.btn.on('pointerover', () => this.btn.setStyle({ color: '#ffff00' }));
+    this.btn.on('pointerout', () => this.btn.setStyle({ color: '#00ffcc' }));
+
+    // Clique/teclado
+    this.btn.on('pointerdown', () => this.startGame());
+    this.input.keyboard.on('keydown-ENTER', () => this.startGame());
+
+    // Responsivo
+    this.scale.on('resize', this.onResize, this);
+  }
+
+  startGame() {
+    this.scene.start('MainScene');
+  }
+
+  onResize(gameSize) {
+    const { width, height } = gameSize;
+    if (!width || !height) return;
+
+    this.bg.setDisplaySize(width, height);
+    this.title.setPosition(width / 2, height * 0.25);
+    this.btn.setPosition(width / 2, height - 100);
   }
 }
