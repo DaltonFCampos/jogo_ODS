@@ -1,4 +1,3 @@
-// src/scenes/MainScene.js
 export default class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
@@ -23,7 +22,7 @@ export default class MainScene extends Phaser.Scene {
     this.pollutionDropJitter = 1800;    // variação
     this.pollutionPerDrop = 2;          // por gota
     this.maxActivePollution = 30;       // cap em tela
-    this.pollutionCollectAmount = 2;   // <-- contador para diminuir poluição
+    this.pollutionCollectAmount = 10;   // coleta padrão (jogador)
 
     // Tartaruga (aliada)
     this.turtle = null;
@@ -31,6 +30,13 @@ export default class MainScene extends Phaser.Scene {
     this.turtleTarget = new Phaser.Math.Vector2();
     this.turtleRetargetInterval = 2500;
     this._nextTurtleRetarget = 0;
+
+    // Peixe (ambient/aliado leve)
+    this.fish = null;
+    this.fishSpeed = 70;
+    this.fishTarget = new Phaser.Math.Vector2();
+    this.fishRetargetInterval = 2000;
+    this._nextFishRetarget = 0;
   }
 
   preload() {
@@ -44,13 +50,29 @@ export default class MainScene extends Phaser.Scene {
     g.generateTexture('enemy', 24, 24);
     g.destroy();
 
-    // Tartaruga
+    // Tartaruga (textura simples)
     g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14);
-    g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);
-    g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);
+    g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14); // casco
+    g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);   // cabeça
+    g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);   // nadadeiras
     g.fillCircle(7, 24, 4); g.fillCircle(25, 24, 4);
     g.generateTexture('turtle', 32, 32);
+    g.destroy();
+
+    // Peixe (textura simples)
+    g = this.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0x4fc3f7, 1); // corpo
+    g.fillEllipse(16, 12, 22, 14);
+    g.fillStyle(0x0288d1, 1); // cauda
+    g.beginPath();
+    g.moveTo(4, 12);
+    g.lineTo(0, 6);
+    g.lineTo(0, 18);
+    g.closePath();
+    g.fillPath();
+    g.fillStyle(0xffffff, 1); // olho
+    g.fillCircle(20, 10, 2);
+    g.generateTexture('fish', 32, 24);
     g.destroy();
 
     // Coração (vida)
@@ -95,11 +117,20 @@ export default class MainScene extends Phaser.Scene {
     this.pollutionGroup = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: this.maxActivePollution });
     this.pickups = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 6 });
 
-    // Tartaruga aliada
+    // Tartaruga aliada (não coleta poluição)
     this.turtle = this.physics.add.image(400, 350, 'turtle')
       .setDepth(2)
       .setCollideWorldBounds(true);
     this.turtle.hp = 3;
+
+    // Peixe
+    this.fish = this.physics.add.image(
+      Phaser.Math.Between(80, this.scale.width - 80),
+      Phaser.Math.Between(80, this.scale.height - 180),
+      'fish'
+    )
+      .setDepth(1)
+      .setCollideWorldBounds(true);
 
     // HUD
     this.add.text(10, 10, 'WASD: mover • SPACE: atirar • P: pausar', { color: '#ffffff', fontFamily: 'monospace' });
@@ -126,7 +157,8 @@ export default class MainScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.pollutionGroup, this.collectPollution, null, this);
     this.physics.add.overlap(this.player, this.enemies, this.onEnemyHitPlayer, null, this);
     this.physics.add.overlap(this.turtle, this.enemies, this.onEnemyHitTurtle, null, this);
-    this.physics.add.overlap(this.turtle, this.pollutionGroup, this.onTurtleCollectPollution, null, this);
+    // REMOVIDO: tartaruga NÃO coleta poluição
+    // this.physics.add.overlap(this.turtle, this.pollutionGroup, this.onTurtleCollectPollution, null, this);
     this.physics.add.overlap(this.player, this.pickups, this.onCollectHeart, null, this);
 
     // Spawner de inimigos
@@ -136,8 +168,9 @@ export default class MainScene extends Phaser.Scene {
       callback: () => this.spawnEnemy(),
     });
 
-    // Primeiro destino da tartaruga
+    // Destinos iniciais
     this.setNewTurtleTarget();
+    this.setNewFishTarget();
 
     // Responsivo
     this.scale.on('resize', this.onResize, this);
@@ -200,8 +233,9 @@ export default class MainScene extends Phaser.Scene {
     this.water.tilePositionY += 0.15;
     this.water.tilePositionX += 0.07;
 
-    // Tartaruga
+    // Tartaruga e peixe
     this.updateTurtle(time);
+    this.updateFish(time);
   }
 
   // ----------- Disparo -----------
@@ -321,17 +355,8 @@ export default class MainScene extends Phaser.Scene {
   collectPollution(_player, pollution) {
     if (!pollution.active) return;
     pollution.disableBody(true, true);
-    this.pollutionLevel = Math.max(0, this.pollutionLevel - this.pollutionCollectAmount); // <-- usa a constante
+    this.pollutionLevel = Math.max(0, this.pollutionLevel - this.pollutionCollectAmount);
     this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
-  }
-
-  onTurtleCollectPollution(_turtle, pollution) {
-    if (!pollution.active) return;
-    pollution.disableBody(true, true);
-    this.pollutionLevel = Math.max(0, this.pollutionLevel - this.pollutionCollectAmount); // <-- usa a mesma constante
-    this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
-    this.score += 2;
-    this.scoreText.setText(`score: ${this.score}`);
   }
 
   gameOverByPollution() {
@@ -468,6 +493,32 @@ export default class MainScene extends Phaser.Scene {
 
     const angle = Math.atan2(dir.y, dir.x) + Math.PI / 2;
     this.turtle.rotation = Phaser.Math.Angle.RotateTo(this.turtle.rotation, angle, 0.05);
+  }
+
+  // ----------- Peixe -----------
+  setNewFishTarget() {
+    const pad = 30;
+    const tx = Phaser.Math.Between(pad, this.scale.width - pad);
+    const ty = Phaser.Math.Between(pad, this.scale.height - pad);
+    this.fishTarget.set(tx, ty);
+  }
+
+  updateFish(time) {
+    if (!this.fish?.active) return;
+
+    if (time > this._nextFishRetarget ||
+        Phaser.Math.Distance.Between(this.fish.x, this.fish.y, this.fishTarget.x, this.fishTarget.y) < 20) {
+      this.setNewFishTarget();
+      this._nextFishRetarget = time + this.fishRetargetInterval;
+    }
+
+    const dir = new Phaser.Math.Vector2(this.fishTarget.x - this.fish.x, this.fishTarget.y - this.fish.y).normalize();
+    this.fish.setVelocity(dir.x * this.fishSpeed, dir.y * this.fishSpeed);
+
+    // vira o peixe de acordo com a direção (olhar pra direita/esquerda)
+    this.fish.setFlipX(dir.x < 0);
+    const angle = Math.atan2(dir.y, dir.x) + Math.PI / 2;
+    this.fish.rotation = Phaser.Math.Angle.RotateTo(this.fish.rotation, angle, 0.05);
   }
 
   // ----------- Resize -----------
