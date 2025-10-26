@@ -6,7 +6,6 @@ export default class MenuScene extends Phaser.Scene {
 
   preload() {
     this.load.image('menuBg', 'assets/menu-background.png');
-
     // Áudio
     this.load.audio('bg_menu',   ['assets/audio/bg_menu.mp3']);
     this.load.audio('ui_hover',  ['assets/audio/ui_hover.mp3']);
@@ -14,7 +13,10 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   create() {
-    // --- Volume global (persistido) ---
+    // Reset debounce: ao voltar ao menu, garantir que pode iniciar novamente
+    this._starting = false;
+
+    // Volume global persistido
     const savedVol = parseFloat(localStorage.getItem('volume'));
     const startVolume = Number.isFinite(savedVol) ? Phaser.Math.Clamp(savedVol, 0, 1) : 0.7;
     this.sound.volume = startVolume;
@@ -28,11 +30,11 @@ export default class MenuScene extends Phaser.Scene {
       .setDisplaySize(this.scale.width, this.scale.height);
 
     // Título
-    // this.title = this.add.text(this.scale.width / 2, this.scale.height * 0.22, 'EcoNavio', {
-    //   fontFamily: 'monospace', fontSize: '56px', color: '#ffffff',
-    // }).setOrigin(0.5).setShadow(2, 2, '#000', 4, true, true);
+    this.title = this.add.text(this.scale.width / 2, this.scale.height * 0.22, 'EcoNavio', {
+      fontFamily: 'monospace', fontSize: '56px', color: '#ffffff',
+    }).setOrigin(0.5).setShadow(2, 2, '#000', 4, true, true);
 
-    // ---------- BOTÃO INICIAR ----------
+    // ---------- BOTÃO INICIAR (hit-area grande) ----------
     const btnY = this.scale.height - 110;
     const btnWidth = 320;
     const btnHeight = 48;
@@ -82,24 +84,24 @@ export default class MenuScene extends Phaser.Scene {
       this.toggleSettings(true);
     });
 
-    // ---------- PAINEL DE CONFIGURAÇÕES (INICIALMENTE OCULTO) ----------
+    // ---------- PAINEL DE CONFIGURAÇÕES ----------
     this.createSettingsPanel(startVolume);
-    this.toggleSettings(false); // escondido ao iniciar
+    this.toggleSettings(false); // começa fechado
     this.input.keyboard.on('keydown-ESC', () => this.toggleSettings(false));
 
-    // Responsivo
+    // Registrar listener de resize após criar tudo
     this.scale.on('resize', this.onResize, this);
 
-    // Limpeza ao sair
+    // Limpeza ao sair da cena (evita acumular listeners e garante áudio)
     this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.menuMusic?.stop();
-      this.menuMusic?.destroy();
+      if (this.menuMusic && this.menuMusic.isPlaying) this.menuMusic.stop();
+      if (this.menuMusic) this.menuMusic.destroy();
+      this.scale.off('resize', this.onResize, this);
     });
   }
 
   // ------- Painel de Configurações -------
   createSettingsPanel(startValue) {
-    // dimensões
     this.panelW = 360;
     this.panelH = 180;
     this.panelX = (this.scale.width  - this.panelW) / 2;
@@ -108,14 +110,7 @@ export default class MenuScene extends Phaser.Scene {
     // fundo do painel
     this.settingsBg = this.add.graphics();
     this.settingsBg.setDepth(50);
-    const drawPanel = () => {
-      this.settingsBg.clear();
-      this.settingsBg.fillStyle(0x000000, 0.8);
-      this.settingsBg.fillRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12);
-      this.settingsBg.lineStyle(2, 0x00ffcc, 1);
-      this.settingsBg.strokeRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12);
-    };
-    drawPanel();
+    this.redrawPanel();
 
     // título
     this.settingsTitle = this.add.text(this.panelX + this.panelW / 2, this.panelY + 20, 'Configurações', {
@@ -146,16 +141,7 @@ export default class MenuScene extends Phaser.Scene {
 
     // barra
     this.sliderBar = this.add.graphics().setDepth(51);
-    const drawBar = () => {
-      const s = this.slider;
-      this.sliderBar.clear();
-      this.sliderBar.fillStyle(0x222222, 0.9);
-      this.sliderBar.fillRoundedRect(s.x, s.y - s.height / 2, s.width, s.height, 3);
-      const fillW = s.width * s.value;
-      this.sliderBar.fillStyle(0x00ffcc, 1);
-      this.sliderBar.fillRoundedRect(s.x, s.y - s.height / 2, fillW, s.height, 3);
-    };
-    drawBar();
+    this.redrawSliderBar();
 
     // knob
     const knobX = () => this.slider.x + this.slider.width * this.slider.value;
@@ -179,7 +165,7 @@ export default class MenuScene extends Phaser.Scene {
       const nx = Phaser.Math.Clamp(dragX, minX, maxX);
       s.value = (nx - s.x) / s.width;
       this.sliderKnob.x = nx;
-      drawBar();
+      this.redrawSliderBar();
       this.applyVolume(s.value);
     });
 
@@ -188,34 +174,57 @@ export default class MenuScene extends Phaser.Scene {
       const nx = Phaser.Math.Clamp(pointer.x, s.x, s.x + s.width);
       s.value = (nx - s.x) / s.width;
       this.sliderKnob.x = nx;
-      drawBar();
+      this.redrawSliderBar();
       this.applyVolume(s.value);
     });
 
-    // armazenar elementos para show/hide
+    // elementos para show/hide
     this.settingsElems = [
       this.settingsBg, this.settingsTitle, this.settingsClose,
       this.volLabel, this.sliderBar, this.sliderKnob, this.volValueText
     ];
   }
 
+  redrawPanel() {
+    if (!this.settingsBg) return;
+    this.settingsBg.clear();
+    this.settingsBg.fillStyle(0x000000, 0.8);
+    this.settingsBg.fillRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12);
+    this.settingsBg.lineStyle(2, 0x00ffcc, 1);
+    this.settingsBg.strokeRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12);
+  }
+
+  redrawSliderBar() {
+    if (!this.sliderBar || !this.slider) return;
+    const s = this.slider;
+    this.sliderBar.clear();
+    this.sliderBar.fillStyle(0x222222, 0.9);
+    this.sliderBar.fillRoundedRect(s.x, s.y - s.height / 2, s.width, s.height, 3);
+    const fillW = s.width * s.value;
+    this.sliderBar.fillStyle(0x00ffcc, 1);
+    this.sliderBar.fillRoundedRect(s.x, s.y - s.height / 2, fillW, s.height, 3);
+  }
+
   toggleSettings(show) {
     const visible = !!show;
-    this.settingsElems.forEach(el => el.setVisible(visible).setActive(visible));
+    if (!this.settingsElems) return;
+    for (const el of this.settingsElems) {
+      if (el) { el.setVisible(visible); el.setActive(visible); }
+    }
   }
 
   applyVolume(v) {
     const vol = Phaser.Math.Clamp(v, 0, 1);
     this.sound.volume = vol;
     localStorage.setItem('volume', String(vol));
-    this.volValueText.setText(`${Math.round(vol * 100)}%`);
+    if (this.volValueText) this.volValueText.setText(`${Math.round(vol * 100)}%`);
     this.playSfx('ui_hover', { volume: Math.max(0.15, vol * 0.35) });
   }
 
   safeStartGame() {
     this.playSfx('ui_select', { volume: 0.6 });
-    if (this.menuMusic?.isPlaying) this.menuMusic.stop();
-    if (this._starting) return;
+    if (this.menuMusic && this.menuMusic.isPlaying) this.menuMusic.stop();
+    if (this._starting) return; // impede duplo clique
     this._starting = true;
     this.time.delayedCall(40, () => this.scene.start('MainScene'));
   }
@@ -224,68 +233,59 @@ export default class MenuScene extends Phaser.Scene {
   playSfx(key, cfg) {
     if (this.cache.audio.exists(key)) {
       this.sound.play(key, cfg);
-    } else {
-      // console.warn(`[SFX] '${key}' não encontrado no cache de áudio.`);
     }
   }
 
+  // ---------- Resize robusto ----------
   onResize(gameSize) {
-    const { width, height } = gameSize;
+    const width  = gameSize ? gameSize.width  : this.scale.width;
+    const height = gameSize ? gameSize.height : this.scale.height;
     if (!width || !height) return;
 
-    // Fundo e título
-    this.bg.setDisplaySize(width, height);
-    this.title.setPosition(width / 2, height * 0.22);
+    const safeSetPos = (obj, x, y) => { if (obj) obj.setPosition(x, y); };
 
-    // Iniciar
+    // Fundo e título
+    if (this.bg) this.bg.setDisplaySize(width, height);
+    safeSetPos(this.title, width / 2, height * 0.22);
+
+    // Botão iniciar
     const btnY = height - 110;
-    this.startHit.setPosition(width / 2, btnY);
-    this.btn.setPosition(width / 2, btnY);
+    safeSetPos(this.startHit, width / 2, btnY);
+    safeSetPos(this.btn,      width / 2, btnY);
 
     // Botão Configurações
-    this.settingsBtn.setPosition(width - 16, 16);
+    safeSetPos(this.settingsBtn, width - 16, 16);
 
-    // Painel (recentraliza)
+    // Painel
     this.panelW = 360; this.panelH = 180;
     this.panelX = (width  - this.panelW) / 2;
     this.panelY = (height - this.panelH) / 2;
 
-    // redesenha painel
-    this.settingsBg && (this.settingsBg.clear(),
-      this.settingsBg.fillStyle(0x000000, 0.8),
-      this.settingsBg.fillRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12),
-      this.settingsBg.lineStyle(2, 0x00ffcc, 1),
-      this.settingsBg.strokeRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12)
-    );
+    this.redrawPanel();
 
-    this.settingsTitle?.setPosition(this.panelX + this.panelW / 2, this.panelY + 20);
-    this.settingsClose?.setPosition(this.panelX + this.panelW - 10, this.panelY + 10);
+    safeSetPos(this.settingsTitle, this.panelX + this.panelW / 2, this.panelY + 20);
+    safeSetPos(this.settingsClose, this.panelX + this.panelW - 10, this.panelY + 10);
 
-    // reposiciona slider
-    const cx = this.panelX + this.panelW / 2;
-    const cy = this.panelY + 90;
+    // Slider
     if (this.slider) {
+      const cx = this.panelX + this.panelW / 2;
+      const cy = this.panelY + 90;
+
       this.slider.x = cx - 120;
       this.slider.y = cy;
 
-      // redesenha barra e move knob
-      this.sliderBar.setPosition(0, 0);
-      this.sliderBar.clear();
-      this.sliderBar.fillStyle(0x222222, 0.9);
-      this.sliderBar.fillRoundedRect(this.slider.x, this.slider.y - this.slider.height / 2, this.slider.width, this.slider.height, 3);
-      const fillW = this.slider.width * this.slider.value;
-      this.sliderBar.fillStyle(0x00ffcc, 1);
-      this.sliderBar.fillRoundedRect(this.slider.x, this.slider.y - this.slider.height / 2, fillW, this.slider.height, 3);
+      this.redrawSliderBar();
 
-      this.sliderKnob.setPosition(this.slider.x + this.slider.width * this.slider.value, cy);
-      this.volLabel.setPosition(cx, cy - 28);
-      this.volValueText.setPosition(cx, cy + 16);
+      safeSetPos(this.sliderKnob, this.slider.x + this.slider.width * this.slider.value, cy);
+      safeSetPos(this.volLabel,   cx, cy - 28);
+      safeSetPos(this.volValueText, cx, cy + 16);
 
-      // atualizar área interativa da barra
-      this.sliderBar.setInteractive(
-        new Phaser.Geom.Rectangle(this.slider.x, this.slider.y - this.slider.height / 2, this.slider.width, this.slider.height),
-        Phaser.Geom.Rectangle.Contains
-      );
+      if (this.sliderBar) {
+        this.sliderBar.setInteractive(
+          new Phaser.Geom.Rectangle(this.slider.x, this.slider.y - this.slider.height / 2, this.slider.width, this.slider.height),
+          Phaser.Geom.Rectangle.Contains
+        );
+      }
     }
   }
 }
