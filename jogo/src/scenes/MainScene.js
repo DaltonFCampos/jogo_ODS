@@ -43,10 +43,9 @@ export default class MainScene extends Phaser.Scene {
     // Sprites
     this.load.image('ship', 'assets/ship.png');
 
-    let g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0xff4d6d, 1); g.fillCircle(12, 12, 12); g.generateTexture('enemy', 24, 24); g.destroy();
+    this.load.image('enemy', 'assets/enemy.png');
 
-    g = this.make.graphics({ x: 0, y: 0, add: false });
+    let g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14);
     g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);
     g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);
@@ -273,6 +272,7 @@ export default class MainScene extends Phaser.Scene {
     if (!enemy.body) this.physics.world.enable(enemy);
 
     enemy.setActive(true).setVisible(true).setDepth(3);
+    enemy.setScale(0.15);
     enemy.body.enable = true;
     enemy.body.reset(x, y);
     enemy.hp = 2;
