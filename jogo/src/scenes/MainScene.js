@@ -13,25 +13,25 @@ export default class MainScene extends Phaser.Scene {
     this.enemySpeedMin = 20;
     this.enemySpeedMax = 40;
     this.score = 0;
-    this.enemyHeartDropChance = 0.25; // 25%
+    this.enemyHeartDropChance = 0.25;
 
-    // Poluição (mais fluida)
+    // Poluição
     this.pollutionLevel = 0;
     this.maxPollution = 100;
-    this.pollutionDropRate = 5000;      // base
-    this.pollutionDropJitter = 1800;    // variação
-    this.pollutionPerDrop = 2;          // por gota
-    this.maxActivePollution = 30;       // cap em tela
-    this.pollutionCollectAmount = 10;   // coleta padrão (jogador)
+    this.pollutionDropRate = 5000;
+    this.pollutionDropJitter = 1800;
+    this.pollutionPerDrop = 2;
+    this.maxActivePollution = 30;
+    this.pollutionCollectAmount = 10;
 
-    // Tartaruga (aliada)
+    // Tartaruga
     this.turtle = null;
     this.turtleSpeed = 80;
     this.turtleTarget = new Phaser.Math.Vector2();
     this.turtleRetargetInterval = 2500;
     this._nextTurtleRetarget = 0;
 
-    // Peixe (ambient/aliado leve)
+    // Peixe
     this.fish = null;
     this.fishSpeed = 70;
     this.fishTarget = new Phaser.Math.Vector2();
@@ -40,68 +40,57 @@ export default class MainScene extends Phaser.Scene {
   }
 
   preload() {
-    // Player
+    // Sprites
     this.load.image('ship', 'assets/ship.png');
 
-    // Inimigo (círculo rosa)
     let g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0xff4d6d, 1);
-    g.fillCircle(12, 12, 12);
-    g.generateTexture('enemy', 24, 24);
-    g.destroy();
+    g.fillStyle(0xff4d6d, 1); g.fillCircle(12, 12, 12); g.generateTexture('enemy', 24, 24); g.destroy();
 
-    // Tartaruga (textura simples)
     g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14); // casco
-    g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);   // cabeça
-    g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);   // nadadeiras
+    g.fillStyle(0x2e7d32, 1); g.fillCircle(16, 16, 14);
+    g.fillStyle(0x43a047, 1); g.fillCircle(16, 3, 5);
+    g.fillCircle(5, 12, 4); g.fillCircle(27, 12, 4);
     g.fillCircle(7, 24, 4); g.fillCircle(25, 24, 4);
-    g.generateTexture('turtle', 32, 32);
-    g.destroy();
+    g.generateTexture('turtle', 32, 32); g.destroy();
 
-    // Peixe (textura simples)
     g = this.make.graphics({ x: 0, y: 0, add: false });
-    g.fillStyle(0x4fc3f7, 1); // corpo
-    g.fillEllipse(16, 12, 22, 14);
-    g.fillStyle(0x0288d1, 1); // cauda
-    g.beginPath();
-    g.moveTo(4, 12);
-    g.lineTo(0, 6);
-    g.lineTo(0, 18);
-    g.closePath();
-    g.fillPath();
-    g.fillStyle(0xffffff, 1); // olho
-    g.fillCircle(20, 10, 2);
-    g.generateTexture('fish', 32, 24);
-    g.destroy();
+    g.fillStyle(0x4fc3f7, 1); g.fillEllipse(16, 12, 22, 14);
+    g.fillStyle(0x0288d1, 1); g.beginPath(); g.moveTo(4, 12); g.lineTo(0, 6); g.lineTo(0, 18); g.closePath(); g.fillPath();
+    g.fillStyle(0xffffff, 1); g.fillCircle(20, 10, 2);
+    g.generateTexture('fish', 32, 24); g.destroy();
 
-    // Coração (vida)
     g = this.make.graphics({ x: 0, y: 0, add: false });
     g.fillStyle(0xff2d55, 1);
-    g.fillCircle(8, 8, 6);
-    g.fillCircle(16, 8, 6);
+    g.fillCircle(8, 8, 6); g.fillCircle(16, 8, 6);
     g.beginPath(); g.moveTo(2, 10); g.lineTo(12, 22); g.lineTo(22, 10); g.closePath(); g.fillPath();
-    g.generateTexture('heart', 24, 24);
-    g.destroy();
+    g.generateTexture('heart', 24, 24); g.destroy();
 
-    // Assets
     this.load.image('water', 'assets/water-tile2-seamless.png');
     this.load.image('cannonball', 'assets/cannonBall.png');
     this.load.image('pollution', 'assets/pollution.png');
+
+    // Áudio
+    this.load.audio('bg_game',       ['assets/audio/bg_game.mp3']);
+    this.load.audio('sfx_shoot',     ['assets/audio/sfx_shoot.mp3']);
+    this.load.audio('sfx_enemy_die', ['assets/audio/sfx_enemy_die.mp3']);
+    this.load.audio('sfx_collect',   ['assets/audio/sfx_collect.mp3']);
+    this.load.audio('sfx_hit',       ['assets/audio/sfx_hit.mp3']);
+    this.load.audio('sfx_pickup',    ['assets/audio/sfx_pickup.mp3']);
+    this.load.audio('sfx_gameover',  ['assets/audio/sfx_gameover.mp3']);
   }
 
   create() {
+    // Música de fundo (jogo)
+    this.bgMusic = this.sound.add('bg_game', { loop: true, volume: 0.4 });
+    if (!this.bgMusic.isPlaying) this.bgMusic.play();
+
     // Fundo (água)
     this.water = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
-      .setOrigin(0)
-      .setDepth(-1);
+      .setOrigin(0).setDepth(-1);
 
     // Player
     this.player = this.physics.add.image(400, 500, 'ship')
-      .setScale(0.5)
-      .setCollideWorldBounds(true)
-      .setDrag(800)
-      .setMaxVelocity(400);
+      .setScale(0.5).setCollideWorldBounds(true).setDrag(800).setMaxVelocity(400);
     this.player.maxHp = 5;
     this.player.hp = this.player.maxHp;
 
@@ -117,10 +106,8 @@ export default class MainScene extends Phaser.Scene {
     this.pollutionGroup = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: this.maxActivePollution });
     this.pickups = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 6 });
 
-    // Tartaruga aliada (não coleta poluição)
-    this.turtle = this.physics.add.image(400, 350, 'turtle')
-      .setDepth(2)
-      .setCollideWorldBounds(true);
+    // Tartaruga
+    this.turtle = this.physics.add.image(400, 350, 'turtle').setDepth(2).setCollideWorldBounds(true);
     this.turtle.hp = 3;
 
     // Peixe
@@ -128,9 +115,7 @@ export default class MainScene extends Phaser.Scene {
       Phaser.Math.Between(80, this.scale.width - 80),
       Phaser.Math.Between(80, this.scale.height - 180),
       'fish'
-    )
-      .setDepth(1)
-      .setCollideWorldBounds(true);
+    ).setDepth(1).setCollideWorldBounds(true);
 
     // HUD
     this.add.text(10, 10, 'WASD: mover • SPACE: atirar • P: pausar', { color: '#ffffff', fontFamily: 'monospace' });
@@ -144,7 +129,7 @@ export default class MainScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '32px', color: '#ffff00'
     }).setOrigin(0.5).setVisible(false);
 
-    // Bounds + descarte de balas por borda
+    // Bounds
     this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
     this.physics.world.on('worldbounds', (body) => {
       const obj = body?.gameObject;
@@ -157,23 +142,23 @@ export default class MainScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.pollutionGroup, this.collectPollution, null, this);
     this.physics.add.overlap(this.player, this.enemies, this.onEnemyHitPlayer, null, this);
     this.physics.add.overlap(this.turtle, this.enemies, this.onEnemyHitTurtle, null, this);
-    // REMOVIDO: tartaruga NÃO coleta poluição
-    // this.physics.add.overlap(this.turtle, this.pollutionGroup, this.onTurtleCollectPollution, null, this);
     this.physics.add.overlap(this.player, this.pickups, this.onCollectHeart, null, this);
 
-    // Spawner de inimigos
-    this.enemySpawnEvent = this.time.addEvent({
-      delay: this.enemySpawnRate,
-      loop: true,
-      callback: () => this.spawnEnemy(),
-    });
+    // Spawner
+    this.enemySpawnEvent = this.time.addEvent({ delay: this.enemySpawnRate, loop: true, callback: () => this.spawnEnemy() });
 
-    // Destinos iniciais
+    // Destinos
     this.setNewTurtleTarget();
     this.setNewFishTarget();
 
     // Responsivo
     this.scale.on('resize', this.onResize, this);
+
+    // Limpar música ao sair
+    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.bgMusic?.stop();
+      this.bgMusic?.destroy();
+    });
   }
 
   update(time) {
@@ -185,14 +170,18 @@ export default class MainScene extends Phaser.Scene {
       if (this.isPaused) {
         this.physics.world.pause();
         this.enemySpawnEvent.paused = true;
+        this.bgMusic?.pause();
+        this.sound.play('ui_select', { volume: 0.4 });
       } else {
         this.physics.world.resume();
         this.enemySpawnEvent.paused = false;
+        this.bgMusic?.resume();
+        this.sound.play('ui_select', { volume: 0.5 });
       }
     }
     if (this.isPaused) return;
 
-    // Movimento do player
+    // Movimento
     const speed = 260;
     let dx = 0, dy = 0;
     if (this.keys.left.isDown) dx -= 1;
@@ -209,13 +198,13 @@ export default class MainScene extends Phaser.Scene {
       this.player.rotation = Phaser.Math.Angle.RotateTo(currentAngle, targetAngle, 0.25);
     }
 
-    // Tiro automático
+    // Tiro
     if (this.keySpace.isDown && time > this.lastShot + this.fireRate) {
       this.fireBullet();
       this.lastShot = time;
     }
 
-    // Lifespan das balas
+    // Expira balas
     this.bullets.children.iterate((b) => {
       if (!b || !b.active) return;
       if (time - (b.getData('born') || 0) > this.bulletLifespan) {
@@ -223,17 +212,17 @@ export default class MainScene extends Phaser.Scene {
       }
     });
 
-    // Limpa inimigos fora da tela
+    // Limpa inimigos
     this.enemies.children.iterate((e) => {
       if (!e || !e.active) return;
       if (e.y > this.scale.height + 40) e.disableBody(true, true);
     });
 
-    // Fundo suave
+    // Fundo
     this.water.tilePositionY += 0.15;
     this.water.tilePositionX += 0.07;
 
-    // Tartaruga e peixe
+    // Vida marinha
     this.updateTurtle(time);
     this.updateFish(time);
   }
@@ -262,6 +251,9 @@ export default class MainScene extends Phaser.Scene {
     bullet.setVelocity(fx * this.bulletSpeed, fy * this.bulletSpeed);
     bullet.setRotation(rot);
     bullet.setData('born', this.time.now);
+
+    // SFX tiro (volume baixo pra não enjoar)
+    this.sound.play('sfx_shoot', { volume: 0.35 });
   }
 
   // ----------- Inimigos -----------
@@ -326,7 +318,6 @@ export default class MainScene extends Phaser.Scene {
     p.body.reset(x, y);
     if (p.body.setAllowGravity) p.body.setAllowGravity(false);
 
-    // efeito de “surgir” + flutuação suave
     this.tweens.add({
       targets: p,
       alpha: { from: 0, to: 1 },
@@ -357,10 +348,12 @@ export default class MainScene extends Phaser.Scene {
     pollution.disableBody(true, true);
     this.pollutionLevel = Math.max(0, this.pollutionLevel - this.pollutionCollectAmount);
     this.pollutionText.setText(`Poluição: ${this.pollutionLevel}%`);
+    this.sound.play('sfx_collect', { volume: 0.5 });
   }
 
   gameOverByPollution() {
     this.addCenteredMessage('Oceano poluído! Fim de jogo.');
+    this.sound.play('sfx_gameover', { volume: 0.6 });
     this.time.delayedCall(1200, () => {
       this.scene.start('GameOverScene', { score: this.score });
     });
@@ -378,19 +371,16 @@ export default class MainScene extends Phaser.Scene {
   onBulletHitEnemy(bullet, enemy) {
     bullet.disableBody(true, true);
     enemy.hp -= 1;
-
     if (enemy.hp <= 0) {
       if (enemy.pollutionTimer) { enemy.pollutionTimer.remove(); enemy.pollutionTimer = null; }
 
-      // drop de vida (chance)
-      if (Math.random() < this.enemyHeartDropChance) {
-        this.spawnHeart(enemy.x, enemy.y);
-      }
+      if (Math.random() < this.enemyHeartDropChance) this.spawnHeart(enemy.x, enemy.y);
 
       enemy.disableBody(true, true);
       this.score += 10;
       this.scoreText.setText(`score: ${this.score}`);
       this.cameras.main.flash(80, 255, 255, 255);
+      this.sound.play('sfx_enemy_die', { volume: 0.5 });
     }
   }
 
@@ -401,9 +391,11 @@ export default class MainScene extends Phaser.Scene {
     player.hp -= 1;
     this.hpText.setText(`HP: ${player.hp}`);
     this.cameras.main.shake(150, 0.01);
+    this.sound.play('sfx_hit', { volume: 0.5 });
 
     if (player.hp <= 0) {
       this.addCenteredMessage('Você foi derrotado!');
+      this.sound.play('sfx_gameover', { volume: 0.6 });
       this.time.delayedCall(1000, () => {
         this.scene.start('GameOverScene', { score: this.score });
       });
@@ -417,16 +409,18 @@ export default class MainScene extends Phaser.Scene {
     turtle.hp -= 1;
     this.turtleHpText.setText(`Tartaruga HP: ${turtle.hp}`);
     this.cameras.main.shake(150, 0.008);
+    this.sound.play('sfx_hit', { volume: 0.45 });
 
     if (turtle.hp <= 0) {
       this.addCenteredMessage('A tartaruga foi ferida fatalmente! Proteja melhor da próxima vez.');
+      this.sound.play('sfx_gameover', { volume: 0.6 });
       this.time.delayedCall(1200, () => {
         this.scene.start('GameOverScene', { score: this.score });
       });
     }
   }
 
-  // ----------- Coração (vida) -----------
+  // ----------- Coração -----------
   spawnHeart(x, y) {
     const heart = this.pickups.get(x, y, 'heart');
     if (!heart) return;
@@ -436,7 +430,6 @@ export default class MainScene extends Phaser.Scene {
     heart.body.reset(x, y);
     if (heart.body.setAllowGravity) heart.body.setAllowGravity(false);
 
-    // Flutua e gira um pouco
     this.tweens.add({
       targets: heart,
       y: { from: y, to: y - 8 },
@@ -452,23 +445,14 @@ export default class MainScene extends Phaser.Scene {
     if (!heart.active) return;
     heart.disableBody(true, true);
 
-    // Recupera vida (cap no máximo)
     player.hp = Math.min(player.maxHp, player.hp + 1);
     this.hpText.setText(`HP: ${player.hp}`);
+    this.sound.play('sfx_pickup', { volume: 0.55 });
 
-    // Feedback
     const plus = this.add.text(player.x, player.y - 20, '+1 ❤', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#ff99aa',
+      fontFamily: 'monospace', fontSize: '16px', color: '#ff99aa',
     }).setOrigin(0.5);
-    this.tweens.add({
-      targets: plus,
-      y: plus.y - 20,
-      alpha: 0,
-      duration: 600,
-      onComplete: () => plus.destroy()
-    });
+    this.tweens.add({ targets: plus, y: plus.y - 20, alpha: 0, duration: 600, onComplete: () => plus.destroy() });
   }
 
   // ----------- Tartaruga -----------
@@ -478,19 +462,15 @@ export default class MainScene extends Phaser.Scene {
     const ty = Phaser.Math.Between(pad, this.scale.height - pad);
     this.turtleTarget.set(tx, ty);
   }
-
   updateTurtle(time) {
     if (!this.turtle?.active) return;
-
     if (time > this._nextTurtleRetarget ||
         Phaser.Math.Distance.Between(this.turtle.x, this.turtle.y, this.turtleTarget.x, this.turtleTarget.y) < 24) {
       this.setNewTurtleTarget();
       this._nextTurtleRetarget = time + this.turtleRetargetInterval;
     }
-
     const dir = new Phaser.Math.Vector2(this.turtleTarget.x - this.turtle.x, this.turtleTarget.y - this.turtle.y).normalize();
     this.turtle.setVelocity(dir.x * this.turtleSpeed, dir.y * this.turtleSpeed);
-
     const angle = Math.atan2(dir.y, dir.x) + Math.PI / 2;
     this.turtle.rotation = Phaser.Math.Angle.RotateTo(this.turtle.rotation, angle, 0.05);
   }
@@ -502,20 +482,15 @@ export default class MainScene extends Phaser.Scene {
     const ty = Phaser.Math.Between(pad, this.scale.height - pad);
     this.fishTarget.set(tx, ty);
   }
-
   updateFish(time) {
     if (!this.fish?.active) return;
-
     if (time > this._nextFishRetarget ||
         Phaser.Math.Distance.Between(this.fish.x, this.fish.y, this.fishTarget.x, this.fishTarget.y) < 20) {
       this.setNewFishTarget();
       this._nextFishRetarget = time + this.fishRetargetInterval;
     }
-
     const dir = new Phaser.Math.Vector2(this.fishTarget.x - this.fish.x, this.fishTarget.y - this.fish.y).normalize();
     this.fish.setVelocity(dir.x * this.fishSpeed, dir.y * this.fishSpeed);
-
-    // vira o peixe de acordo com a direção (olhar pra direita/esquerda)
     this.fish.setFlipX(dir.x < 0);
     const angle = Math.atan2(dir.y, dir.x) + Math.PI / 2;
     this.fish.rotation = Phaser.Math.Angle.RotateTo(this.fish.rotation, angle, 0.05);
