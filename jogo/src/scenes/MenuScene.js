@@ -29,11 +29,6 @@ export default class MenuScene extends Phaser.Scene {
     this.bg = this.add.image(0, 0, 'menuBg').setOrigin(0)
       .setDisplaySize(this.scale.width, this.scale.height);
 
-    // Título
-    this.title = this.add.text(this.scale.width / 2, this.scale.height * 0.22, 'EcoNavio', {
-      fontFamily: 'monospace', fontSize: '56px', color: '#ffffff',
-    }).setOrigin(0.5).setShadow(2, 2, '#000', 4, true, true);
-
     // ---------- BOTÃO INICIAR (hit-area grande) ----------
     const btnY = this.scale.height - 110;
     const btnWidth = 320;
