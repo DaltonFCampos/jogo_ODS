@@ -389,16 +389,24 @@ export default class MainScene extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 0, duration: 1000, delay: 800 });
   }
 
+  // ----------- Utilitários -----------
+  disableEnemy(enemy) {
+    if (enemy.pollutionTimer) {
+      enemy.pollutionTimer.remove();
+      enemy.pollutionTimer = null;
+    }
+    enemy.disableBody(true, true);
+  }
+
   // ----------- Dano/colisão -----------
   onBulletHitEnemy(bullet, enemy) {
     bullet.disableBody(true, true);
     enemy.hp -= 1;
     if (enemy.hp <= 0) {
-      if (enemy.pollutionTimer) { enemy.pollutionTimer.remove(); enemy.pollutionTimer = null; }
+      this.disableEnemy(enemy);
 
       if (Math.random() < this.enemyHeartDropChance) this.spawnHeart(enemy.x, enemy.y);
 
-      enemy.disableBody(true, true);
       this.score += 10;
       this.scoreText.setText(`score: ${this.score}`);
       this.cameras.main.flash(80, 255, 255, 255);
@@ -407,8 +415,7 @@ export default class MainScene extends Phaser.Scene {
   }
 
   onEnemyHitPlayer(player, enemy) {
-    enemy.disableBody(true, true);
-    if (enemy.pollutionTimer) { enemy.pollutionTimer.remove(); enemy.pollutionTimer = null; }
+    this.disableEnemy(enemy);
 
     player.hp -= 1;
     this.hpText.setText(`HP: ${player.hp}`);
@@ -425,8 +432,7 @@ export default class MainScene extends Phaser.Scene {
   }
 
   onEnemyHitTurtle(turtle, enemy) {
-    enemy.disableBody(true, true);
-    if (enemy.pollutionTimer) { enemy.pollutionTimer.remove(); enemy.pollutionTimer = null; }
+    this.disableEnemy(enemy);
 
     turtle.hp -= 1;
     this.turtleHpText.setText(`Tartaruga HP: ${turtle.hp}`);
