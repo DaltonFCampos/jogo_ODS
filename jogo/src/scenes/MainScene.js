@@ -158,25 +158,31 @@ export default class MainScene extends Phaser.Scene {
       this.bgMusic?.stop();
       this.bgMusic?.destroy();
     });
+
+    // Pausa 
+    this.pauseMenuContainer = this.add.container(this.scale.width/2, this.scale.height/2).setVisible(false);
+    const bg = this.add.rectangle(0, 0, 300, 180, 0x000000, 0.7).setOrigin(0.5);
+    const title = this.add.text(0, -60, 'PAUSADO', {
+      fontFamily: 'monospace', fontSize: '32px', color: '#ffffff'
+    }).setOrigin(0.5);
+
+    const btnContinue = this.add.text(0, -10, 'Continuar', {
+      fontFamily: 'monospace', fontSize: '24px', color: '#00ffcc', backgroundColor: '#00000080', padding: { x:10, y:6 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    btnContinue.on('pointerdown', () => { this.togglePause(false); });
+
+    const btnMenu = this.add.text(0, 40, 'Menu Principal', {
+      fontFamily: 'monospace', fontSize: '24px', color: '#00ffcc', backgroundColor: '#00000080', padding: { x:10, y:6 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    btnMenu.on('pointerdown', () => { this.scene.start('MenuScene'); });
+    this.pauseMenuContainer.add([bg, title, btnContinue, btnMenu]);
+
   }
 
   update(time) {
     // Pause
     if (Phaser.Input.Keyboard.JustDown(this.keyPause)) {
-      this.isPaused = !this.isPaused;
-      this.pauseText.setVisible(this.isPaused);
-
-      if (this.isPaused) {
-        this.physics.world.pause();
-        this.enemySpawnEvent.paused = true;
-        this.bgMusic?.pause();
-        this.sound.play('ui_select', { volume: 0.4 });
-      } else {
-        this.physics.world.resume();
-        this.enemySpawnEvent.paused = false;
-        this.bgMusic?.resume();
-        this.sound.play('ui_select', { volume: 0.5 });
-      }
+      this.togglePause(!this.isPaused);
     }
     if (this.isPaused) return;
 
@@ -335,6 +341,22 @@ export default class MainScene extends Phaser.Scene {
     });
 
     this.addPollution(this.pollutionPerDrop);
+  }
+
+  togglePause(state) {
+    this.isPaused = state;
+    this.pauseMenuContainer.setVisible(state);
+
+    if (state) {
+      this.physics.world.pause();
+      this.enemySpawnEvent.paused = true;
+      this.bgMusic?.pause();
+      // Opcional: pausar outros sons, animações etc.
+    } else {
+      this.physics.world.resume();
+      this.enemySpawnEvent.paused = false;
+      this.bgMusic?.resume();
+    }
   }
 
   addPollution(amount) {
