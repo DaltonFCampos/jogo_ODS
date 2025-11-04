@@ -1,0 +1,360 @@
+// src/scenes/MenuScene.js
+export default class MenuScene extends Phaser.Scene {
+  constructor() {
+    super('MenuScene');
+  }
+
+  preload() {
+    this.load.image('menuBg', 'assets/menu-background.png');
+    this.load.audio('bg_menu',   ['assets/audio/bg_menu.mp3']);
+    this.load.audio('ui_hover',  ['assets/audio/ui_hover.mp3']);
+    this.load.audio('ui_select', ['assets/audio/ui_select.mp3']);
+  }
+
+  create() {
+    this._starting = false;
+
+    // Volume global persistido
+    const savedVol = parseFloat(localStorage.getItem('volume'));
+    const startVolume = Number.isFinite(savedVol) ? Phaser.Math.Clamp(savedVol, 0, 1) : 0.7;
+    this.sound.volume = startVolume;
+
+    // Música do menu
+    this.menuMusic = this.sound.add('bg_menu', { loop: true, volume: 0.45 });
+    if (!this.menuMusic.isPlaying) this.menuMusic.play();
+
+    // Fundo
+    this.bg = this.add.image(0, 0, 'menuBg').setOrigin(0)
+      .setDisplaySize(this.scale.width, this.scale.height);
+
+    // ---------- BOTÕES TOPO-DIREITO ----------
+    this.settingsBtn = this.add.text(this.scale.width - 16, 16, '⚙ Configurações', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
+      backgroundColor: '#00000055', padding: { x: 10, y: 6 },
+    }).setOrigin(1, 0).setInteractive({ useHandCursor: true }).setDepth(40);
+
+    this.settingsBtn.on('pointerover', () => {
+      this.playSfx('ui_hover', { volume: 0.4 });
+      this.settingsBtn.setStyle({ color: '#ffff00' });
+    });
+    this.settingsBtn.on('pointerout', () => this.settingsBtn.setStyle({ color: '#ffffff' }));
+    this.settingsBtn.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleSettings(true);
+    });
+
+    // ---------- BOTÃO INSTRUÇÕES (TOPO-ESQUERDO) ----------
+    this.instructionsBtn = this.add.text(16, 16, 'ℹ Instruções', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
+      backgroundColor: '#00000055', padding: { x: 10, y: 6 },
+    }).setOrigin(0, 0).setInteractive({ useHandCursor: true }).setDepth(40);
+
+    this.instructionsBtn.on('pointerover', () => {
+      this.playSfx('ui_hover', { volume: 0.4 });
+      this.instructionsBtn.setStyle({ color: '#ffff00' });
+    });
+    this.instructionsBtn.on('pointerout', () => this.instructionsBtn.setStyle({ color: '#ffffff' }));
+    this.instructionsBtn.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleInstructionsModal(true);
+    });
+
+    // ---------- BOTÃO INICIAR ----------
+    const btnY = this.scale.height - 110;
+    const btnWidth = 320;
+    const btnHeight = 48;
+
+    this.startHit = this.add.rectangle(this.scale.width / 2, btnY, btnWidth, btnHeight, 0x000000, 0.35)
+      .setStrokeStyle(2, 0x00ffcc)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(20);
+
+    this.btn = this.add.text(this.scale.width / 2, btnY, '[ INICIAR JOGO ]', {
+      fontFamily: 'monospace', fontSize: '24px', color: '#00ffcc',
+    }).setOrigin(0.5).setDepth(21);
+
+    this.tweens.add({
+      targets: [this.btn, this.startHit],
+      scale: { from: 1, to: 1.05 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
+
+    const hoverOn  = () => { this.playSfx('ui_hover', { volume: 0.5 }); this.btn.setStyle({ color: '#ffff00' }); this.startHit.setStrokeStyle(2, 0xffff00); };
+    const hoverOff = () => { this.btn.setStyle({ color: '#00ffcc' });  this.startHit.setStrokeStyle(2, 0x00ffcc); };
+    this.startHit.on('pointerover', hoverOn);
+    this.startHit.on('pointerout',  hoverOff);
+    this.startHit.on('pointerdown', () => this.safeStartGame());
+    this.input.keyboard.on('keydown-ENTER', () => this.safeStartGame());
+    this.input.keyboard.on('keydown-SPACE', () => this.safeStartGame());
+
+    // ---------- PAINEL DE CONFIGURAÇÕES ----------
+    this.createSettingsPanel(startVolume);
+    this.toggleSettings(false);
+    this.input.keyboard.on('keydown-ESC', () => {
+      // Fecha painel de config OU modal de instrução se aberto
+      if (this.instructionsOpen) this.toggleInstructionsModal(false);
+      else this.toggleSettings(false);
+    });
+
+    // ---------- MODAL DE INSTRUÇÕES ----------
+    this.createInstructionsModal();
+    this.toggleInstructionsModal(false);
+
+    // Resize
+    this.scale.on('resize', this.onResize, this);
+
+    // Limpeza ao sair da cena
+    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.menuMusic && this.menuMusic.isPlaying) this.menuMusic.stop();
+      if (this.menuMusic) this.menuMusic.destroy();
+      this.scale.off('resize', this.onResize, this);
+    });
+  }
+
+  // ------- Painel de Configurações -------
+  createSettingsPanel(startValue) {
+    this.panelW = 360;
+    this.panelH = 180;
+    this.panelX = (this.scale.width  - this.panelW) / 2;
+    this.panelY = (this.scale.height - this.panelH) / 2;
+
+    this.settingsBg = this.add.graphics().setDepth(50);
+    this.redrawPanel();
+
+    this.settingsTitle = this.add.text(this.panelX + this.panelW / 2, this.panelY + 20, 'Configurações', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(51);
+
+    this.settingsClose = this.add.text(this.panelX + this.panelW - 10, this.panelY + 10, '✕', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#ffcccc',
+      backgroundColor: '#00000055', padding: { x: 6, y: 2 },
+    }).setOrigin(1, 0).setDepth(51).setInteractive({ useHandCursor: true });
+    this.settingsClose.on('pointerover', () => this.settingsClose.setStyle({ color: '#ffff00' }));
+    this.settingsClose.on('pointerout',  () => this.settingsClose.setStyle({ color: '#ffcccc' }));
+    this.settingsClose.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleSettings(false);
+    });
+
+    const cx = this.panelX + this.panelW / 2;
+    const cy = this.panelY + 90;
+    this.volLabel = this.add.text(cx, cy - 28, 'Volume', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(51);
+
+    this.slider = { x: cx - 120, y: cy, width: 240, height: 6, knobRadius: 10, value: Phaser.Math.Clamp(startValue, 0, 1) };
+
+    this.sliderBar = this.add.graphics().setDepth(51);
+    this.redrawSliderBar();
+
+    const knobX = () => this.slider.x + this.slider.width * this.slider.value;
+    this.sliderKnob = this.add.circle(knobX(), cy, this.slider.knobRadius, 0xffff00, 1).setStrokeStyle(2, 0x222222);
+    this.sliderKnob.setDepth(52).setInteractive({ draggable: true, useHandCursor: true });
+    this.input.setDraggable(this.sliderKnob);
+
+    this.volValueText = this.add.text(cx, cy + 16, `${Math.round(this.slider.value * 100)}%`, {
+      fontFamily: 'monospace', fontSize: '14px', color: '#cccccc',
+    }).setOrigin(0.5).setDepth(51);
+
+    this.sliderBar.setInteractive(
+      new Phaser.Geom.Rectangle(this.slider.x, this.slider.y - this.slider.height / 2, this.slider.width, this.slider.height),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    this.sliderKnob.on('drag', (_pointer, dragX) => {
+      const s = this.slider; const minX = s.x; const maxX = s.x + s.width;
+      const nx = Phaser.Math.Clamp(dragX, minX, maxX);
+      s.value = (nx - s.x) / s.width;
+      this.sliderKnob.x = nx;
+      this.redrawSliderBar();
+      this.applyVolume(s.value);
+    });
+
+    this.sliderBar.on('pointerdown', (pointer) => {
+      const s = this.slider;
+      const nx = Phaser.Math.Clamp(pointer.x, s.x, s.x + s.width);
+      s.value = (nx - s.x) / s.width;
+      this.sliderKnob.x = nx;
+      this.redrawSliderBar();
+      this.applyVolume(s.value);
+    });
+
+    this.settingsElems = [
+      this.settingsBg, this.settingsTitle, this.settingsClose,
+      this.volLabel, this.sliderBar, this.sliderKnob, this.volValueText
+    ];
+  }
+
+  redrawPanel() {
+    if (!this.settingsBg) return;
+    this.settingsBg.clear();
+    this.settingsBg.fillStyle(0x000000, 0.8);
+    this.settingsBg.fillRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12);
+    this.settingsBg.lineStyle(2, 0x00ffcc, 1);
+    this.settingsBg.strokeRoundedRect(this.panelX, this.panelY, this.panelW, this.panelH, 12);
+  }
+
+  redrawSliderBar() {
+    if (!this.sliderBar || !this.slider) return;
+    const s = this.slider;
+    this.sliderBar.clear();
+    this.sliderBar.fillStyle(0x222222, 0.9);
+    this.sliderBar.fillRoundedRect(s.x, s.y - s.height / 2, s.width, s.height, 3);
+    const fillW = s.width * s.value;
+    this.sliderBar.fillStyle(0x00ffcc, 1);
+    this.sliderBar.fillRoundedRect(s.x, s.y - s.height / 2, fillW, s.height, 3);
+  }
+
+  toggleSettings(show) {
+    const visible = !!show;
+    if (!this.settingsElems) return;
+
+    for (const el of this.settingsElems) {
+      if (!el) continue;
+      el.setVisible(visible);
+      el.setActive(visible);
+      if (el.input) el.setInteractive(visible);
+    }
+  }
+
+  applyVolume(v) {
+    const vol = Phaser.Math.Clamp(v, 0, 1);
+    this.sound.volume = vol;
+    localStorage.setItem('volume', String(vol));
+    if (this.volValueText) this.volValueText.setText(`${Math.round(vol * 100)}%`);
+    this.playSfx('ui_hover', { volume: Math.max(0.15, vol * 0.35) });
+  }
+
+  // ------- Modal de Instruções -------
+  createInstructionsModal() {
+    // Backdrop fullscreen + capture de input
+    this.instructionsBackdrop = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.6)
+      .setOrigin(0).setDepth(10000).setInteractive({ useHandCursor: false });
+
+    // Painel central
+    const w = Math.min(520, this.scale.width - 40);
+    const h = Math.min(320, this.scale.height - 40);
+    this.instructionsPanel = this.add.container(this.scale.width / 2, this.scale.height / 2).setDepth(10001);
+
+    const panelBg = this.add.rectangle(0, 0, w, h, 0x0b1020, 0.95).setOrigin(0.5).setStrokeStyle(2, 0x00ffcc);
+    const title = this.add.text(0, -h / 2 + 24, 'Instruções', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#ffffff'
+    }).setOrigin(0.5, 0.5);
+
+    const content = this.add.text(0, -10,
+      '• WASD: mover\n' +
+      '• SPACE: atirar\n' +
+      '• P/ESC: pausar o jogo\n' +
+      '• Colete ❤ para recuperar HP\n' +
+      '• Evite que a poluição chegue a 100%',
+      { fontFamily: 'monospace', fontSize: '16px', color: '#c8f7ff', align: 'left', wordWrap: { width: w - 60 } }
+    ).setOrigin(0.5, 0.5);
+
+    const closeBtn = this.add.text(0, h / 2 - 28, 'Fechar', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#00ffcc',
+      backgroundColor: '#00000080', padding: { x: 12, y: 6 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    closeBtn.on('pointerover', () => closeBtn.setStyle({ color: '#ffff00' }));
+    closeBtn.on('pointerout',  () => closeBtn.setStyle({ color: '#00ffcc' }));
+    closeBtn.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleInstructionsModal(false);
+    });
+
+    this.instructionsPanel.add([panelBg, title, content, closeBtn]);
+  }
+
+  toggleInstructionsModal(show) {
+    const visible = !!show;
+    this.instructionsOpen = visible;
+    if (this.instructionsBackdrop) {
+      this.instructionsBackdrop.setVisible(visible).setActive(visible);
+      // garantir que recebe input por cima
+      this.instructionsBackdrop.setDepth(10000);
+    }
+    if (this.instructionsPanel) {
+      this.instructionsPanel.setVisible(visible).setActive(visible);
+      this.instructionsPanel.setDepth(10001);
+    }
+  }
+
+  safeStartGame() {
+    this.playSfx('ui_select', { volume: 0.6 });
+    if (this.menuMusic && this.menuMusic.isPlaying) this.menuMusic.stop();
+    if (this._starting) return;
+    this._starting = true;
+    this.time.delayedCall(40, () => this.scene.start('MainScene'));
+  }
+
+  playSfx(key, cfg) {
+    if (this.cache.audio.exists(key)) {
+      this.sound.play(key, cfg);
+    }
+  }
+
+  onResize(gameSize) {
+    const width  = gameSize ? gameSize.width  : this.scale.width;
+    const height = gameSize ? gameSize.height : this.scale.height;
+    if (!width || !height) return;
+
+    const safeSetPos = (obj, x, y) => { if (obj) obj.setPosition(x, y); };
+
+    // Fundo + Título
+    if (this.bg) this.bg.setDisplaySize(width, height);
+    safeSetPos(this.title, width / 2, height * 0.22);
+
+    // Botões topo
+    safeSetPos(this.instructionsBtn, 16, 16);
+    safeSetPos(this.settingsBtn, width - 16, 16);
+
+    // Botão iniciar
+    const btnY = height - 110;
+    safeSetPos(this.startHit, width / 2, btnY);
+    safeSetPos(this.btn,      width / 2, btnY);
+
+    // Painel de configurações (recalcula)
+    this.panelW = 360; this.panelH = 180;
+    this.panelX = (width  - this.panelW) / 2;
+    this.panelY = (height - this.panelH) / 2;
+    this.redrawPanel();
+
+    safeSetPos(this.settingsTitle, this.panelX + this.panelW / 2, this.panelY + 20);
+    safeSetPos(this.settingsClose, this.panelX + this.panelW - 10, this.panelY + 10);
+
+    // Slider
+    if (this.slider) {
+      const cx = this.panelX + this.panelW / 2;
+      const cy = this.panelY + 90;
+
+      this.slider.x = cx - 120;
+      this.slider.y = cy;
+
+      this.redrawSliderBar();
+
+      safeSetPos(this.sliderKnob, this.slider.x + this.slider.width * this.slider.value, cy);
+      safeSetPos(this.volLabel,   cx, cy - 28);
+      safeSetPos(this.volValueText, cx, cy + 16);
+
+      if (this.sliderBar) {
+        this.sliderBar.setInteractive(
+          new Phaser.Geom.Rectangle(this.slider.x, this.slider.y - this.slider.height / 2, this.slider.width, this.slider.height),
+          Phaser.Geom.Rectangle.Contains
+        );
+      }
+    }
+
+    // Modal de instruções full screen
+    if (this.instructionsBackdrop) {
+      this.instructionsBackdrop.setPosition(0, 0);
+      this.instructionsBackdrop.setSize(width, height);
+    }
+    if (this.instructionsPanel) {
+      this.instructionsPanel.setPosition(width / 2, height / 2);
+    }
+  }
+}
