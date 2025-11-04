@@ -6,14 +6,12 @@ export default class MenuScene extends Phaser.Scene {
 
   preload() {
     this.load.image('menuBg', 'assets/menu-background.png');
-    // Áudio
     this.load.audio('bg_menu',   ['assets/audio/bg_menu.mp3']);
     this.load.audio('ui_hover',  ['assets/audio/ui_hover.mp3']);
     this.load.audio('ui_select', ['assets/audio/ui_select.mp3']);
   }
 
   create() {
-    // Reset debounce: ao voltar ao menu, garantir que pode iniciar novamente
     this._starting = false;
 
     // Volume global persistido
@@ -29,7 +27,39 @@ export default class MenuScene extends Phaser.Scene {
     this.bg = this.add.image(0, 0, 'menuBg').setOrigin(0)
       .setDisplaySize(this.scale.width, this.scale.height);
 
-    // ---------- BOTÃO INICIAR (hit-area grande) ----------
+    // ---------- BOTÕES TOPO-DIREITO ----------
+    this.settingsBtn = this.add.text(this.scale.width - 16, 16, '⚙ Configurações', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
+      backgroundColor: '#00000055', padding: { x: 10, y: 6 },
+    }).setOrigin(1, 0).setInteractive({ useHandCursor: true }).setDepth(40);
+
+    this.settingsBtn.on('pointerover', () => {
+      this.playSfx('ui_hover', { volume: 0.4 });
+      this.settingsBtn.setStyle({ color: '#ffff00' });
+    });
+    this.settingsBtn.on('pointerout', () => this.settingsBtn.setStyle({ color: '#ffffff' }));
+    this.settingsBtn.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleSettings(true);
+    });
+
+    // ---------- BOTÃO INSTRUÇÕES (TOPO-ESQUERDO) ----------
+    this.instructionsBtn = this.add.text(16, 16, 'ℹ Instruções', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
+      backgroundColor: '#00000055', padding: { x: 10, y: 6 },
+    }).setOrigin(0, 0).setInteractive({ useHandCursor: true }).setDepth(40);
+
+    this.instructionsBtn.on('pointerover', () => {
+      this.playSfx('ui_hover', { volume: 0.4 });
+      this.instructionsBtn.setStyle({ color: '#ffff00' });
+    });
+    this.instructionsBtn.on('pointerout', () => this.instructionsBtn.setStyle({ color: '#ffffff' }));
+    this.instructionsBtn.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleInstructionsModal(true);
+    });
+
+    // ---------- BOTÃO INICIAR ----------
     const btnY = this.scale.height - 110;
     const btnWidth = 320;
     const btnHeight = 48;
@@ -37,13 +67,12 @@ export default class MenuScene extends Phaser.Scene {
     this.startHit = this.add.rectangle(this.scale.width / 2, btnY, btnWidth, btnHeight, 0x000000, 0.35)
       .setStrokeStyle(2, 0x00ffcc)
       .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
-    this.startHit.setDepth(20);
+      .setInteractive({ useHandCursor: true })
+      .setDepth(20);
 
     this.btn = this.add.text(this.scale.width / 2, btnY, '[ INICIAR JOGO ]', {
       fontFamily: 'monospace', fontSize: '24px', color: '#00ffcc',
-    }).setOrigin(0.5);
-    this.btn.setDepth(21);
+    }).setOrigin(0.5).setDepth(21);
 
     this.tweens.add({
       targets: [this.btn, this.startHit],
@@ -62,32 +91,23 @@ export default class MenuScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ENTER', () => this.safeStartGame());
     this.input.keyboard.on('keydown-SPACE', () => this.safeStartGame());
 
-    // ---------- BOTÃO CONFIGURAÇÕES (TOP-RIGHT) ----------
-    this.settingsBtn = this.add.text(this.scale.width - 16, 16, '⚙ Configurações', {
-      fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
-      backgroundColor: '#00000055', padding: { x: 10, y: 6 },
-    }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
-    this.settingsBtn.setDepth(40);
-
-    this.settingsBtn.on('pointerover', () => {
-      this.playSfx('ui_hover', { volume: 0.4 });
-      this.settingsBtn.setStyle({ color: '#ffff00' });
-    });
-    this.settingsBtn.on('pointerout', () => this.settingsBtn.setStyle({ color: '#ffffff' }));
-    this.settingsBtn.on('pointerdown', () => {
-      this.playSfx('ui_select', { volume: 0.5 });
-      this.toggleSettings(true);
-    });
-
     // ---------- PAINEL DE CONFIGURAÇÕES ----------
     this.createSettingsPanel(startVolume);
-    this.toggleSettings(false); // começa fechado
-    this.input.keyboard.on('keydown-ESC', () => this.toggleSettings(false));
+    this.toggleSettings(false);
+    this.input.keyboard.on('keydown-ESC', () => {
+      // Fecha painel de config OU modal de instrução se aberto
+      if (this.instructionsOpen) this.toggleInstructionsModal(false);
+      else this.toggleSettings(false);
+    });
 
-    // Registrar listener de resize após criar tudo
+    // ---------- MODAL DE INSTRUÇÕES ----------
+    this.createInstructionsModal();
+    this.toggleInstructionsModal(false);
+
+    // Resize
     this.scale.on('resize', this.onResize, this);
 
-    // Limpeza ao sair da cena (evita acumular listeners e garante áudio)
+    // Limpeza ao sair da cena
     this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
       if (this.menuMusic && this.menuMusic.isPlaying) this.menuMusic.stop();
       if (this.menuMusic) this.menuMusic.destroy();
@@ -102,17 +122,13 @@ export default class MenuScene extends Phaser.Scene {
     this.panelX = (this.scale.width  - this.panelW) / 2;
     this.panelY = (this.scale.height - this.panelH) / 2;
 
-    // fundo do painel
-    this.settingsBg = this.add.graphics();
-    this.settingsBg.setDepth(50);
+    this.settingsBg = this.add.graphics().setDepth(50);
     this.redrawPanel();
 
-    // título
     this.settingsTitle = this.add.text(this.panelX + this.panelW / 2, this.panelY + 20, 'Configurações', {
       fontFamily: 'monospace', fontSize: '18px', color: '#ffffff',
     }).setOrigin(0.5).setDepth(51);
 
-    // botão fechar (X)
     this.settingsClose = this.add.text(this.panelX + this.panelW - 10, this.panelY + 10, '✕', {
       fontFamily: 'monospace', fontSize: '18px', color: '#ffcccc',
       backgroundColor: '#00000055', padding: { x: 6, y: 2 },
@@ -124,32 +140,26 @@ export default class MenuScene extends Phaser.Scene {
       this.toggleSettings(false);
     });
 
-    // label volume
     const cx = this.panelX + this.panelW / 2;
     const cy = this.panelY + 90;
     this.volLabel = this.add.text(cx, cy - 28, 'Volume', {
       fontFamily: 'monospace', fontSize: '16px', color: '#ffffff',
     }).setOrigin(0.5).setDepth(51);
 
-    // slider
     this.slider = { x: cx - 120, y: cy, width: 240, height: 6, knobRadius: 10, value: Phaser.Math.Clamp(startValue, 0, 1) };
 
-    // barra
     this.sliderBar = this.add.graphics().setDepth(51);
     this.redrawSliderBar();
 
-    // knob
     const knobX = () => this.slider.x + this.slider.width * this.slider.value;
     this.sliderKnob = this.add.circle(knobX(), cy, this.slider.knobRadius, 0xffff00, 1).setStrokeStyle(2, 0x222222);
     this.sliderKnob.setDepth(52).setInteractive({ draggable: true, useHandCursor: true });
     this.input.setDraggable(this.sliderKnob);
 
-    // valor %
     this.volValueText = this.add.text(cx, cy + 16, `${Math.round(this.slider.value * 100)}%`, {
       fontFamily: 'monospace', fontSize: '14px', color: '#cccccc',
     }).setOrigin(0.5).setDepth(51);
 
-    // interações
     this.sliderBar.setInteractive(
       new Phaser.Geom.Rectangle(this.slider.x, this.slider.y - this.slider.height / 2, this.slider.width, this.slider.height),
       Phaser.Geom.Rectangle.Contains
@@ -173,7 +183,6 @@ export default class MenuScene extends Phaser.Scene {
       this.applyVolume(s.value);
     });
 
-    // elementos para show/hide
     this.settingsElems = [
       this.settingsBg, this.settingsTitle, this.settingsClose,
       this.volLabel, this.sliderBar, this.sliderKnob, this.volValueText
@@ -203,8 +212,12 @@ export default class MenuScene extends Phaser.Scene {
   toggleSettings(show) {
     const visible = !!show;
     if (!this.settingsElems) return;
+
     for (const el of this.settingsElems) {
-      if (el) { el.setVisible(visible); el.setActive(visible); }
+      if (!el) continue;
+      el.setVisible(visible);
+      el.setActive(visible);
+      if (el.input) el.setInteractive(visible);
     }
   }
 
@@ -216,22 +229,74 @@ export default class MenuScene extends Phaser.Scene {
     this.playSfx('ui_hover', { volume: Math.max(0.15, vol * 0.35) });
   }
 
+  // ------- Modal de Instruções -------
+  createInstructionsModal() {
+    // Backdrop fullscreen + capture de input
+    this.instructionsBackdrop = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.6)
+      .setOrigin(0).setDepth(10000).setInteractive({ useHandCursor: false });
+
+    // Painel central
+    const w = Math.min(520, this.scale.width - 40);
+    const h = Math.min(320, this.scale.height - 40);
+    this.instructionsPanel = this.add.container(this.scale.width / 2, this.scale.height / 2).setDepth(10001);
+
+    const panelBg = this.add.rectangle(0, 0, w, h, 0x0b1020, 0.95).setOrigin(0.5).setStrokeStyle(2, 0x00ffcc);
+    const title = this.add.text(0, -h / 2 + 24, 'Instruções', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#ffffff'
+    }).setOrigin(0.5, 0.5);
+
+    const content = this.add.text(0, -10,
+      '• WASD: mover\n' +
+      '• SPACE: atirar\n' +
+      '• P/ESC: pausar o jogo\n' +
+      '• Colete ❤ para recuperar HP\n' +
+      '• Evite que a poluição chegue a 100%',
+      { fontFamily: 'monospace', fontSize: '16px', color: '#c8f7ff', align: 'left', wordWrap: { width: w - 60 } }
+    ).setOrigin(0.5, 0.5);
+
+    const closeBtn = this.add.text(0, h / 2 - 28, 'Fechar', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#00ffcc',
+      backgroundColor: '#00000080', padding: { x: 12, y: 6 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    closeBtn.on('pointerover', () => closeBtn.setStyle({ color: '#ffff00' }));
+    closeBtn.on('pointerout',  () => closeBtn.setStyle({ color: '#00ffcc' }));
+    closeBtn.on('pointerdown', () => {
+      this.playSfx('ui_select', { volume: 0.5 });
+      this.toggleInstructionsModal(false);
+    });
+
+    this.instructionsPanel.add([panelBg, title, content, closeBtn]);
+  }
+
+  toggleInstructionsModal(show) {
+    const visible = !!show;
+    this.instructionsOpen = visible;
+    if (this.instructionsBackdrop) {
+      this.instructionsBackdrop.setVisible(visible).setActive(visible);
+      // garantir que recebe input por cima
+      this.instructionsBackdrop.setDepth(10000);
+    }
+    if (this.instructionsPanel) {
+      this.instructionsPanel.setVisible(visible).setActive(visible);
+      this.instructionsPanel.setDepth(10001);
+    }
+  }
+
   safeStartGame() {
     this.playSfx('ui_select', { volume: 0.6 });
     if (this.menuMusic && this.menuMusic.isPlaying) this.menuMusic.stop();
-    if (this._starting) return; // impede duplo clique
+    if (this._starting) return;
     this._starting = true;
     this.time.delayedCall(40, () => this.scene.start('MainScene'));
   }
 
-  // Reproduzir SFX com verificação de cache (evita crash se faltar arquivo)
   playSfx(key, cfg) {
     if (this.cache.audio.exists(key)) {
       this.sound.play(key, cfg);
     }
   }
 
-  // ---------- Resize robusto ----------
   onResize(gameSize) {
     const width  = gameSize ? gameSize.width  : this.scale.width;
     const height = gameSize ? gameSize.height : this.scale.height;
@@ -239,23 +304,23 @@ export default class MenuScene extends Phaser.Scene {
 
     const safeSetPos = (obj, x, y) => { if (obj) obj.setPosition(x, y); };
 
-    // Fundo e título
+    // Fundo + Título
     if (this.bg) this.bg.setDisplaySize(width, height);
     safeSetPos(this.title, width / 2, height * 0.22);
+
+    // Botões topo
+    safeSetPos(this.instructionsBtn, 16, 16);
+    safeSetPos(this.settingsBtn, width - 16, 16);
 
     // Botão iniciar
     const btnY = height - 110;
     safeSetPos(this.startHit, width / 2, btnY);
     safeSetPos(this.btn,      width / 2, btnY);
 
-    // Botão Configurações
-    safeSetPos(this.settingsBtn, width - 16, 16);
-
-    // Painel
+    // Painel de configurações (recalcula)
     this.panelW = 360; this.panelH = 180;
     this.panelX = (width  - this.panelW) / 2;
     this.panelY = (height - this.panelH) / 2;
-
     this.redrawPanel();
 
     safeSetPos(this.settingsTitle, this.panelX + this.panelW / 2, this.panelY + 20);
@@ -281,6 +346,15 @@ export default class MenuScene extends Phaser.Scene {
           Phaser.Geom.Rectangle.Contains
         );
       }
+    }
+
+    // Modal de instruções full screen
+    if (this.instructionsBackdrop) {
+      this.instructionsBackdrop.setPosition(0, 0);
+      this.instructionsBackdrop.setSize(width, height);
+    }
+    if (this.instructionsPanel) {
+      this.instructionsPanel.setPosition(width / 2, height / 2);
     }
   }
 }
