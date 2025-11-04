@@ -75,9 +75,20 @@ export default class MainScene extends Phaser.Scene {
   }
 
   create() {
+    // Reset explícito do estado de pause (garante que está desativado ao iniciar)
+    this.isPaused = false;
+    
     // Música de fundo
     this.bgMusic = this.sound.add('bg_game', { loop: true, volume: 0.4 });
     if (!this.bgMusic.isPlaying) this.bgMusic.play();
+    
+    // Garantir que física está ativa
+    if (this.physics.world.isPaused) {
+      this.physics.world.resume();
+    }
+    
+    // Garantir que tweens estão normais
+    this.tweens.timeScale = 1;
 
     // Água original
     this.water = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
@@ -174,6 +185,9 @@ export default class MainScene extends Phaser.Scene {
     btnMenu.on('pointerdown', () => { this.scene.start('MenuScene'); });
 
     this.pauseMenuContainer.add([bg, title, btnContinue, btnMenu]);
+    
+    // Garantir que pause está desativado ao iniciar (força reset completo)
+    this.togglePause(false);
   }
 
   update(time) {
@@ -364,9 +378,16 @@ export default class MainScene extends Phaser.Scene {
       this.bgMusic?.pause();
       this.tweens.timeScale = 0;
     } else {
-      this.physics.world.resume();
-      if (this.enemySpawnEvent) this.enemySpawnEvent.paused = false;
-      this.bgMusic?.resume();
+      // Garantir que tudo está retomado (verificações extras)
+      if (this.physics.world.isPaused) {
+        this.physics.world.resume();
+      }
+      if (this.enemySpawnEvent) {
+        this.enemySpawnEvent.paused = false;
+      }
+      if (this.bgMusic && this.bgMusic.isPaused) {
+        this.bgMusic.resume();
+      }
       this.tweens.timeScale = 1;
     }
   }
