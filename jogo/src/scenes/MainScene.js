@@ -4,26 +4,26 @@ export default class MainScene extends Phaser.Scene {
     super('MainScene');
 
     // Player & tiros
-    this.fireRate = 600;
+    this.fireRate = 450;
     this.bulletSpeed = 650;
     this.lastShot = 0;
     this.bulletLifespan = 2000;
 
     // Inimigos
-    this.enemySpawnRate = 900;
+    this.enemySpawnRate = 1200;
     this.enemySpeedMin = 20;
     this.enemySpeedMax = 40;
     this.score = 0;
-    this.enemyHeartDropChance = 0.25;
+    this.enemyHeartDropChance = 0.40;
 
     // Poluição
     this.pollutionLevel = 0;
     this.maxPollution = 100;
     this.pollutionDropRate = 5000;
     this.pollutionDropJitter = 1800;
-    this.pollutionPerDrop = 2;
+    this.pollutionPerDrop = 1;
     this.maxActivePollution = 30;
-    this.pollutionCollectAmount = 10;
+    this.pollutionCollectAmount = 12;
 
     // Tartaruga
     this.turtle = null;
@@ -33,6 +33,11 @@ export default class MainScene extends Phaser.Scene {
     this._nextTurtleRetarget = 0;
 
     this.isPaused = false;
+    
+    // Invulnerabilidade após dano
+    this.playerInvulnerable = false;
+    this.invulnerabilityDuration = 1500;
+    this.invulnerabilityStartTime = 0;
   }
 
   preload() {
@@ -70,9 +75,20 @@ export default class MainScene extends Phaser.Scene {
   }
 
   create() {
+    // Reset explícito do estado de pause (garante que está desativado ao iniciar)
+    this.isPaused = false;
+    
     // Música de fundo
     this.bgMusic = this.sound.add('bg_game', { loop: true, volume: 0.4 });
     if (!this.bgMusic.isPlaying) this.bgMusic.play();
+    
+    // Garantir que física está ativa
+    if (this.physics.world.isPaused) {
+      this.physics.world.resume();
+    }
+    
+    // Garantir que tweens estão normais
+    this.tweens.timeScale = 1;
 
     // Água original
     this.water = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
@@ -81,8 +97,12 @@ export default class MainScene extends Phaser.Scene {
     // Player
     this.player = this.physics.add.image(400, 500, 'ship')
       .setScale(0.5).setCollideWorldBounds(true).setDrag(800).setMaxVelocity(400);
-    this.player.maxHp = 5;
+    this.player.maxHp = 7;
     this.player.hp = this.player.maxHp;
+    
+    // Reset invulnerabilidade
+    this.playerInvulnerable = false;
+    this.player.setAlpha(1);
 
     // Controles
     this.keys = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
@@ -98,7 +118,7 @@ export default class MainScene extends Phaser.Scene {
 
     // Tartaruga
     this.turtle = this.physics.add.image(400, 350, 'turtle').setDepth(2).setCollideWorldBounds(true);
-    this.turtle.hp = 3;
+    this.turtle.hp = 5;
 
     // HUD (ajustado sem peixe)
     this.add.text(10, 10, 'WASD: mover • SPACE: atirar • P/ESC: pausar', { color: '#ffffff', fontFamily: 'monospace' });
@@ -165,6 +185,9 @@ export default class MainScene extends Phaser.Scene {
     btnMenu.on('pointerdown', () => { this.scene.start('MenuScene'); });
 
     this.pauseMenuContainer.add([bg, title, btnContinue, btnMenu]);
+    
+    // Garantir que pause está desativado ao iniciar (força reset completo)
+    this.togglePause(false);
   }
 
   update(time) {
@@ -175,7 +198,7 @@ export default class MainScene extends Phaser.Scene {
     if (this.isPaused) return;
 
     // Movimento
-    const speed = 260;
+    const speed = 300;
     let dx = 0, dy = 0;
     if (this.keys.left.isDown) dx -= 1;
     if (this.keys.right.isDown) dx += 1;
@@ -189,6 +212,18 @@ export default class MainScene extends Phaser.Scene {
       const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
       const currentAngle = this.player.rotation;
       this.player.rotation = Phaser.Math.Angle.RotateTo(currentAngle, targetAngle, 0.25);
+    }
+
+    // Efeito de invulnerabilidade (piscar)
+    if (this.playerInvulnerable) {
+      const elapsed = time - this.invulnerabilityStartTime;
+      if (elapsed < this.invulnerabilityDuration) {
+        const alpha = Math.sin(elapsed / 50) * 0.5 + 0.5;  // Pisca entre 0.5 e 1.0
+        this.player.setAlpha(alpha);
+      } else {
+        this.playerInvulnerable = false;
+        this.player.setAlpha(1);
+      }
     }
 
     // Tiro
@@ -343,9 +378,16 @@ export default class MainScene extends Phaser.Scene {
       this.bgMusic?.pause();
       this.tweens.timeScale = 0;
     } else {
-      this.physics.world.resume();
-      if (this.enemySpawnEvent) this.enemySpawnEvent.paused = false;
-      this.bgMusic?.resume();
+      // Garantir que tudo está retomado (verificações extras)
+      if (this.physics.world.isPaused) {
+        this.physics.world.resume();
+      }
+      if (this.enemySpawnEvent) {
+        this.enemySpawnEvent.paused = false;
+      }
+      if (this.bgMusic && this.bgMusic.isPaused) {
+        this.bgMusic.resume();
+      }
       this.tweens.timeScale = 1;
     }
   }
@@ -403,12 +445,19 @@ export default class MainScene extends Phaser.Scene {
   }
 
   onEnemyHitPlayer(player, enemy) {
+    // Se estiver invulnerável, não toma dano
+    if (this.playerInvulnerable) return;
+    
     this.disableEnemy(enemy);
 
     player.hp -= 1;
     this.hpText.setText(`HP: ${player.hp}`);
     this.cameras.main.shake(150, 0.01);
     this.sound.play('sfx_hit', { volume: 0.5 });
+
+    // Ativa invulnerabilidade
+    this.playerInvulnerable = true;
+    this.invulnerabilityStartTime = this.time.now;
 
     if (player.hp <= 0) {
       this.addCenteredMessage('Você foi derrotado!');
