@@ -33,6 +33,53 @@ export default class MainScene extends Phaser.Scene {
     this._nextTurtleRetarget = 0;
 
     this.isPaused = false;
+
+    // ===== Waves (por abates) + Cards educacionais =====
+    this.waveIndex = 1;
+    this.waveKills = 0;
+    this.waveSpawned = 0;
+    this.waveResolved = 0;
+    this.waveKillTargetBase = 6;
+    this.waveKillTargetStep = 3;
+
+    this.waveSpawnDelayBase = 900;
+    this.waveSpawnDelayStep = 60;
+    this.waveSpawnDelayMin = 350;
+
+    this.enemyWaveSpawnEvent = null;
+
+    this.isCardOpen = false;
+    this.cardBackdrop = null;
+    this.cardContainer = null;
+
+    this.educationCards = [
+      'ODS 14: Reduza o lixo no mar. Evite plásticos descartáveis e descarte corretamente.',
+      'Sustentabilidade aquática: economize água e evite jogar óleo na pia; isso contamina rios e oceanos.',
+      'Proteja a vida marinha: descarte redes e linhas corretamente e evite produtos com microplásticos.',
+      'Consumo consciente: prefira pesca sustentável e respeite períodos de defeso.',
+      'Ação local, impacto global: participar de mutirões de limpeza ajuda a reduzir poluição no oceano.'
+    ];
+  }
+
+  init() {
+    // Phaser pode reiniciar a cena sem criar nova instância.
+    // Então precisamos resetar estado que não deve persistir entre partidas.
+    this.isPaused = false;
+
+    this.waveIndex = 1;
+    this.waveKills = 0;
+    this.waveSpawned = 0;
+    this.waveResolved = 0;
+    this.waveKillTarget = 0;
+
+    this.enemyWaveSpawnEvent?.remove();
+    this.enemyWaveSpawnEvent = null;
+
+    this.isCardOpen = false;
+    this.cardContainer?.destroy(true);
+    this.cardBackdrop?.destroy(true);
+    this.cardContainer = null;
+    this.cardBackdrop = null;
   }
 
   preload() {
@@ -72,7 +119,7 @@ export default class MainScene extends Phaser.Scene {
   create() {
     // Música de fundo
     this.bgMusic = this.sound.add('bg_game', { loop: true, volume: 0.4 });
-    if (!this.bgMusic.isPlaying) this.bgMusic.play();
+    this.bgMusic?.play?.();
 
     // Água original
     this.water = this.add.tileSprite(0, 0, this.scale.width, this.scale.height, 'water')
@@ -89,10 +136,11 @@ export default class MainScene extends Phaser.Scene {
     this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.keyPause = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.keyEsc   = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.keyEnter = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
     // Grupos
     this.bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 120 });
-    this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 8 });
+    this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 40 });
     this.pollutionGroup = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: this.maxActivePollution });
     this.pickups = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 6 });
 
@@ -106,6 +154,7 @@ export default class MainScene extends Phaser.Scene {
     this.hpText = this.add.text(10, 46, `HP: ${this.player.hp}`, { color: '#ff4d4d', fontFamily: 'monospace' });
     this.turtleHpText = this.add.text(10, 64, `Tartaruga HP: ${this.turtle.hp}`, { color: '#00e676', fontFamily: 'monospace' });
     this.pollutionText = this.add.text(10, 82, 'Poluição: 0%', { color: '#80deea', fontFamily: 'monospace' });
+    this.waveText = this.add.text(10, 100, 'Wave: 1 (0/0)', { color: '#ffffff', fontFamily: 'monospace' });
 
     // Texto "PAUSADO" (acima de tudo)
     this.pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'PAUSADO', {
@@ -116,7 +165,7 @@ export default class MainScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
     this.physics.world.on('worldbounds', (body) => {
       const obj = body?.gameObject;
-      if (!obj || !obj.active) return;
+      if (!obj?.active) return;
       if (obj.texture?.key === 'cannonball') obj.disableBody(true, true);
     });
 
@@ -127,8 +176,8 @@ export default class MainScene extends Phaser.Scene {
     this.physics.add.overlap(this.turtle, this.enemies, this.onEnemyHitTurtle, null, this);
     this.physics.add.overlap(this.player, this.pickups, this.onCollectHeart, null, this);
 
-    // Spawner
-    this.enemySpawnEvent = this.time.addEvent({ delay: this.enemySpawnRate, loop: true, callback: () => this.spawnEnemy() });
+    // Inicia primeira wave (substitui o spawner infinito)
+    this.startWave();
 
     // Destinos
     this.setNewTurtleTarget();
@@ -140,6 +189,8 @@ export default class MainScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.bgMusic?.stop();
       this.bgMusic?.destroy();
+      this.enemyWaveSpawnEvent?.remove();
+      this.enemyWaveSpawnEvent = null;
       this.enemies?.children?.iterate((e) => {
         if (e?.pollutionTimer) { e.pollutionTimer.remove(); e.pollutionTimer = null; }
       });
@@ -168,8 +219,18 @@ export default class MainScene extends Phaser.Scene {
   }
 
   update(time) {
+    // Card educacional: pausa total do gameplay até fechar
+    if (this.isCardOpen) {
+      if (this.keyEnter && Phaser.Input.Keyboard.JustDown(this.keyEnter)) this.closeEducationCard();
+      return;
+    }
+
     // Pause
-    if (Phaser.Input.Keyboard.JustDown(this.keyPause) || Phaser.Input.Keyboard.JustDown(this.keyEsc)) {
+    const pausePressed =
+      (this.keyPause && Phaser.Input.Keyboard.JustDown(this.keyPause)) ||
+      (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc));
+
+    if (pausePressed) {
       this.togglePause(!this.isPaused);
     }
     if (this.isPaused) return;
@@ -177,10 +238,10 @@ export default class MainScene extends Phaser.Scene {
     // Movimento
     const speed = 260;
     let dx = 0, dy = 0;
-    if (this.keys.left.isDown) dx -= 1;
-    if (this.keys.right.isDown) dx += 1;
-    if (this.keys.up.isDown) dy -= 1;
-    if (this.keys.down.isDown) dy += 1;
+    if (this.keys?.left?.isDown) dx -= 1;
+    if (this.keys?.right?.isDown) dx += 1;
+    if (this.keys?.up?.isDown) dy -= 1;
+    if (this.keys?.down?.isDown) dy += 1;
 
     const len = Math.hypot(dx, dy) || 1;
     this.player.setVelocity((dx / len) * speed, (dy / len) * speed);
@@ -192,14 +253,14 @@ export default class MainScene extends Phaser.Scene {
     }
 
     // Tiro
-    if (this.keySpace.isDown && time > this.lastShot + this.fireRate) {
+    if (this.keySpace?.isDown && time > this.lastShot + this.fireRate) {
       this.fireBullet();
       this.lastShot = time;
     }
 
     // Expira balas
     this.bullets.children.iterate((b) => {
-      if (!b || !b.active) return;
+      if (!b?.active) return;
       if (time - (b.getData('born') || 0) > this.bulletLifespan) {
         b.disableBody(true, true);
       }
@@ -207,8 +268,15 @@ export default class MainScene extends Phaser.Scene {
 
     // Limpa inimigos fora
     this.enemies.children.iterate((e) => {
-      if (!e || !e.active) return;
-      if (e.y > this.scale.height + 40) this.disableEnemy(e);
+      if (!e?.active) return;
+
+      // Se sair da tela por qualquer lado, "wrap/respawn" para outra borda
+      const margin = 60;
+      const outLeft   = e.x < -margin;
+      const outRight  = e.x > this.scale.width + margin;
+      const outTop    = e.y < -margin;
+      const outBottom = e.y > this.scale.height + margin;
+      if (outLeft || outRight || outTop || outBottom) this.repositionEnemyToEdge(e, margin);
     });
 
     // Água
@@ -260,7 +328,7 @@ export default class MainScene extends Phaser.Scene {
     else                     { x = bounds.right; y = Phaser.Math.Between(0, this.scale.height); }
 
     let enemy = this.enemies.get(x, y, 'enemy');
-    if (!enemy) return;
+    if (!enemy) return null;
     if (!enemy.body) this.physics.world.enable(enemy);
 
     enemy.setActive(true).setVisible(true).setDepth(3);
@@ -268,6 +336,7 @@ export default class MainScene extends Phaser.Scene {
     enemy.body.enable = true;
     enemy.body.reset(x, y);
     enemy.hp = 2;
+    enemy.setData('waveCounted', false);
 
     if (enemy.body.setAllowGravity) enemy.body.setAllowGravity(false);
     else enemy.body.allowGravity = false;
@@ -285,9 +354,32 @@ export default class MainScene extends Phaser.Scene {
       delay: Math.max(1200, this.pollutionDropRate + jitter),
       loop: true,
       callback: () => {
-        if (enemy.active && this.isInScreen(enemy)) this.dropPollution(enemy.x, enemy.y);
+        if (enemy?.active && this.isInScreen(enemy)) this.dropPollution(enemy.x, enemy.y);
       }
     });
+
+    return enemy;
+  }
+
+  repositionEnemyToEdge(enemy, margin = 60) {
+    if (!enemy?.active) return;
+
+    // Escolhe uma borda aleatória e reposiciona, mantendo o inimigo na wave (sem contar como resolvido)
+    const side = Phaser.Utils.Array.GetRandom(['top', 'bottom', 'left', 'right']);
+
+    let x, y;
+    if (side === 'top')        { x = Phaser.Math.Between(0, this.scale.width); y = -margin; }
+    else if (side === 'bottom'){ x = Phaser.Math.Between(0, this.scale.width); y = this.scale.height + margin; }
+    else if (side === 'left')  { x = -margin; y = Phaser.Math.Between(0, this.scale.height); }
+    else                       { x = this.scale.width + margin; y = Phaser.Math.Between(0, this.scale.height); }
+
+    enemy.body?.reset(x, y);
+
+    const target = new Phaser.Math.Vector2(this.player.x, this.player.y);
+    const from = new Phaser.Math.Vector2(x, y);
+    const direction = target.subtract(from).normalize();
+    const speed = Phaser.Math.Between(this.enemySpeedMin, this.enemySpeedMax);
+    enemy.setVelocity(direction.x * speed, direction.y * speed);
   }
 
   isInScreen(sprite) {
@@ -330,6 +422,7 @@ export default class MainScene extends Phaser.Scene {
   }
 
   togglePause(state) {
+    if (this.isCardOpen) return; // card tem prioridade sobre o pause
     this.isPaused = state;
 
     // Modal acima de tudo
@@ -339,12 +432,12 @@ export default class MainScene extends Phaser.Scene {
 
     if (state) {
       this.physics.world.pause();
-      if (this.enemySpawnEvent) this.enemySpawnEvent.paused = true;
+      if (this.enemyWaveSpawnEvent?.paused !== undefined) this.enemyWaveSpawnEvent.paused = true;
       this.bgMusic?.pause();
       this.tweens.timeScale = 0;
     } else {
       this.physics.world.resume();
-      if (this.enemySpawnEvent) this.enemySpawnEvent.paused = false;
+      if (this.enemyWaveSpawnEvent?.paused !== undefined) this.enemyWaveSpawnEvent.paused = false;
       this.bgMusic?.resume();
       this.tweens.timeScale = 1;
     }
@@ -385,6 +478,16 @@ export default class MainScene extends Phaser.Scene {
     if (!enemy) return;
     if (enemy.pollutionTimer) { enemy.pollutionTimer.remove(); enemy.pollutionTimer = null; }
     enemy.disableBody?.(true, true);
+
+    // Conta como "resolvido" (morreu OU colidiu OU saiu da tela) para a wave não travar.
+    if (!enemy.getData?.('waveCounted')) {
+      enemy.setData?.('waveCounted', true);
+      this.waveResolved = Math.min(this.waveKillTarget || Infinity, (this.waveResolved || 0) + 1);
+      this.updateWaveHud();
+    }
+
+    // pode liberar o fim de wave quando o alvo já foi atingido
+    this.checkWaveEnd();
   }
 
   // Dano/colisão
@@ -399,6 +502,11 @@ export default class MainScene extends Phaser.Scene {
       this.score += 10;
       this.scoreText.setText(`score: ${this.score}`);
       this.sound.play('sfx_enemy_die', { volume: 0.5 });
+
+      // ===== Wave kill count =====
+      this.waveKills = Math.min(this.waveKillTarget || Infinity, this.waveKills + 1);
+      this.updateWaveHud();
+      this.checkWaveEnd();
     }
   }
 
@@ -499,10 +607,129 @@ export default class MainScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, width, height);
     this.cameras.main.setBounds(0, 0, width, height);
 
-    if (this.water) this.water.setDisplaySize(width, height);
+    this.water?.setDisplaySize?.(width, height);
 
     this.pauseBackdrop.setPosition(width/2, height/2).setSize(width, height);
     this.pauseMenuContainer.setPosition(width / 2, height / 2);
     this.pauseText.setPosition(width / 2, height / 2);
+
+    // Card educacional
+    if (this.cardBackdrop) {
+      this.cardBackdrop.setPosition(0, 0);
+      this.cardBackdrop.setSize(width, height);
+    }
+    if (this.cardContainer) {
+      this.cardContainer.setPosition(width / 2, height / 2);
+    }
+  }
+
+  // ===== WAVES =====
+  startWave() {
+    this.waveKills = 0;
+    this.waveSpawned = 0;
+    this.waveResolved = 0;
+    const w = this.waveIndex - 1;
+
+    this.waveKillTarget = this.waveKillTargetBase + (w * this.waveKillTargetStep);
+
+    const delay = Math.max(this.waveSpawnDelayMin, this.waveSpawnDelayBase - (w * this.waveSpawnDelayStep));
+
+    this.enemyWaveSpawnEvent?.remove();
+    this.enemyWaveSpawnEvent = this.time.addEvent({
+      delay,
+      loop: true,
+      callback: () => {
+        if (this.isPaused || this.isCardOpen) return;
+        if (this.waveSpawned >= this.waveKillTarget) return; // não cria mais do que a wave pede
+
+        const enemy = this.spawnEnemy();
+        if (!enemy) return;
+        this.waveSpawned += 1;
+        this.updateWaveHud();
+      }
+    });
+
+    this.updateWaveHud();
+  }
+
+  updateWaveHud() {
+    if (this.waveText) {
+      // Mostra progresso por "resolvidos" (evita travar wave se inimigo colidir/despawn)
+      const target = this.waveKillTarget || 0;
+      const resolved = Math.min(target, this.waveResolved || 0);
+      this.waveText.setText(`Wave: ${this.waveIndex} (${resolved}/${target})`);
+    }
+  }
+
+  checkWaveEnd() {
+    if (this.isPaused || this.isCardOpen) return;
+    if (!Number.isFinite(this.waveKillTarget)) return;
+    if ((this.waveResolved || 0) < this.waveKillTarget) return;
+    if ((this.waveSpawned || 0) < this.waveKillTarget) return;
+    if (this.enemies?.countActive(true) > 0) return;
+
+    const msg = this.educationCards[(this.waveIndex - 1) % this.educationCards.length];
+    this.showEducationCard(msg);
+  }
+
+  // ===== CARD EDUCACIONAL =====
+  showEducationCard(text) {
+    if (this.isCardOpen) return;
+    this.isCardOpen = true;
+
+    // pausa gameplay sem abrir o menu de pause
+    this.physics.world.pause();
+    if (this.enemyWaveSpawnEvent?.paused !== undefined) this.enemyWaveSpawnEvent.paused = true;
+
+    this.cardBackdrop = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000, 0.65)
+      .setOrigin(0)
+      .setDepth(11000)
+      .setInteractive();
+
+    const w = Math.min(560, this.scale.width - 40);
+    const h = Math.min(260, this.scale.height - 40);
+
+    const panelBg = this.add.rectangle(0, 0, w, h, 0x0b1020, 0.95)
+      .setOrigin(0.5)
+      .setStrokeStyle(2, 0x00ffcc);
+
+    const title = this.add.text(0, -h / 2 + 26, 'Dica de Sustentabilidade', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#ffffff'
+    }).setOrigin(0.5);
+
+    const content = this.add.text(0, -8, text, {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#c8f7ff',
+      align: 'center',
+      wordWrap: { width: w - 60 }
+    }).setOrigin(0.5);
+
+    const btn = this.add.text(0, h / 2 - 26, 'Continuar (ENTER)', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#00ffcc',
+      backgroundColor: '#00000080', padding: { x: 12, y: 6 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    btn.on('pointerdown', () => this.closeEducationCard());
+
+    this.cardContainer = this.add.container(this.scale.width / 2, this.scale.height / 2, [panelBg, title, content, btn])
+      .setDepth(11001);
+  }
+
+  closeEducationCard() {
+    if (!this.isCardOpen) return;
+
+    this.isCardOpen = false;
+
+    this.cardContainer?.destroy(true);
+    this.cardBackdrop?.destroy(true);
+    this.cardContainer = null;
+    this.cardBackdrop = null;
+
+    this.physics.world.resume();
+    if (this.enemyWaveSpawnEvent?.paused !== undefined) this.enemyWaveSpawnEvent.paused = false;
+
+    this.waveIndex += 1;
+    this.startWave();
   }
 }
